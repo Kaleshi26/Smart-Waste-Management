@@ -12,7 +12,7 @@ function ResidentDashboard({ user }) {
     setLoading(true);
     try {
       // We use the logged-in user's ID to fetch their specific invoices
-      const response = await axios.get(`http://localhost:8080/api/invoices/user/${user.id}`);
+      const response = await axios.get(`http://localhost:8082/api/invoices/user/${user.id}`);
       setInvoices(response.data);
     } catch (err) {
       setError('Could not fetch invoices.');
@@ -31,7 +31,7 @@ function ResidentDashboard({ user }) {
   const handlePayInvoice = async (invoiceId) => {
     try {
       // Send a POST request to our payment simulation endpoint
-      await axios.post(`http://localhost:8080/api/invoices/pay/${invoiceId}`);
+      await axios.post(`http://localhost:8082/api/invoices/pay/${invoiceId}`);
       // After successful payment, refresh the invoice list to show the updated status
       fetchInvoices();
     } catch (err) {

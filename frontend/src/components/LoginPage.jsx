@@ -13,7 +13,7 @@ function LoginPage({ onLoginSuccess, onNavigateToSignup }) {
     setError(null);
 
     try {
-      const response = await axios.post('http://localhost:8080/api/auth/login', {
+      const response = await axios.post('http://localhost:8082/api/auth/login', {
         email: email,
         password: password,
       });

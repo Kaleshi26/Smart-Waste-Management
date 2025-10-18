@@ -78,7 +78,7 @@ class ReportingServiceTest {
         when(wasteBinRepository.count()).thenReturn(5L); // Let's pretend there are 5 bins
 
         // --- ACT ---
-        DashboardStatsDto stats = reportingService.getDashboardStats();
+        DashboardStatsDto stats = reportingService.getDashboardStats(null, null);
 
         // --- ASSERT ---
         // Check if the calculations are correct
@@ -94,7 +94,7 @@ class ReportingServiceTest {
         when(collectionEventRepository.findAll()).thenReturn(List.of(event1, event2));
 
         // --- ACT ---
-        List<CollectionEventDto> dtos = reportingService.getCollectionEvents();
+        List<CollectionEventDto> dtos = reportingService.getCollectionEvents(null, null);
 
         // --- ASSERT ---
         assertNotNull(dtos);

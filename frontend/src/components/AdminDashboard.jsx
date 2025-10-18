@@ -31,9 +31,9 @@ function AdminDashboard({ user }) {
 
       try {
         const [statsResponse, eventsResponse, monthlyResponse] = await Promise.all([
-          axios.get('http://localhost:8080/api/reports/dashboard-stats', { params }),
-          axios.get('http://localhost:8080/api/reports/collection-events', { params }),
-          axios.get('http://localhost:8080/api/reports/monthly-waste'), // Monthly chart is not filtered
+          axios.get('http://localhost:8082/api/reports/dashboard-stats', { params }),
+          axios.get('http://localhost:8082/api/reports/collection-events', { params }),
+          axios.get('http://localhost:8082/api/reports/monthly-waste'), // Monthly chart is not filtered
         ]);
         setStats(statsResponse.data);
         setEvents(eventsResponse.data);
