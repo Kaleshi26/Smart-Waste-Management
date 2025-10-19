@@ -49,7 +49,7 @@ function AdminDashboard({ user }) {
   }, [filter]); // Re-run this effect every time the 'filter' state changes
 
   return (
-    <div>
+    <div className="dashboard-container">
       <div className="dashboard-header">
         <div>
           <h1 className="dashboard-title">Admin Dashboard</h1>

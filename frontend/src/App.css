@@ -254,6 +254,8 @@ body {
   background-color: #f8f9fa;
   width: 100%;
   min-height: calc(100vh - 80px);
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 /* --- FULL SCREEN DASHBOARD STYLES - FIXED --- */
@@ -271,7 +273,8 @@ body {
 
 .dashboard-header {
   padding: 2rem 2rem 1rem 2rem;
-  width: 100%;
+  width: calc(100% - 4rem);
+  box-sizing: border-box;
 }
 
 .dashboard-title {
@@ -294,7 +297,8 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 1.5rem;
   margin: 0 2rem 2rem 2rem;
-  width: auto;
+  width: calc(100% - 4rem);
+  box-sizing: border-box;
 }
 
 .stat-card {
@@ -334,8 +338,9 @@ body {
   border-radius: 8px;
   padding: 1.5rem;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  width: auto;
+  width: calc(100% - 4rem);
   min-height: 400px;
+  box-sizing: border-box;
 }
 
 .dashboard-card h3,
@@ -350,6 +355,8 @@ body {
 table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
+  word-wrap: break-word;
 }
 
 th, td {
