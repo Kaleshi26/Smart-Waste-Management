@@ -24,7 +24,7 @@ function StaffDashboard({ user }) {
     setSuccess(null);
     try {
       // Make a GET request to the new endpoint to fetch bin details
-      const response = await axios.get(`http://localhost:8080/api/waste/bin/${inputValue}`);
+      const response = await axios.get(`http://localhost:8082/api/waste/bin/${inputValue}`);
       setBinDetails(response.data);
       setView('confirm'); // On success, switch to the confirmation view
     } catch (err) {
@@ -47,7 +47,7 @@ function StaffDashboard({ user }) {
         weightInKg: parseFloat(weight),
       };
       // Make the POST request to the existing collection endpoint
-      await axios.post('http://localhost:8080/api/waste/collect', collectionData);
+      await axios.post('http://localhost:8082/api/waste/collect', collectionData);
       setSuccess(`Collection for bin ${binDetails.binId} recorded successfully!`);
       handleCancel(); // Reset the form back to the scan view
     } catch (err) {

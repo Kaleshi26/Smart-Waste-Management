@@ -31,9 +31,9 @@ function AdminDashboard({ user }) {
 
       try {
         const [statsResponse, eventsResponse, monthlyResponse] = await Promise.all([
-          axios.get('http://localhost:8080/api/reports/dashboard-stats', { params }),
-          axios.get('http://localhost:8080/api/reports/collection-events', { params }),
-          axios.get('http://localhost:8080/api/reports/monthly-waste'), // Monthly chart is not filtered
+          axios.get('http://localhost:8082/api/reports/dashboard-stats', { params }),
+          axios.get('http://localhost:8082/api/reports/collection-events', { params }),
+          axios.get('http://localhost:8082/api/reports/monthly-waste'), // Monthly chart is not filtered
         ]);
         setStats(statsResponse.data);
         setEvents(eventsResponse.data);
@@ -49,7 +49,7 @@ function AdminDashboard({ user }) {
   }, [filter]); // Re-run this effect every time the 'filter' state changes
 
   return (
-    <div>
+    <div className="dashboard-container">
       <div className="dashboard-header">
         <div>
           <h1 className="dashboard-title">Admin Dashboard</h1>

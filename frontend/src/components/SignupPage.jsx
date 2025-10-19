@@ -27,7 +27,7 @@ function SignupPage({ onNavigateToLogin }) {
     };
 
     try {
-      await axios.post('http://localhost:8080/api/auth/register', newUser);
+      await axios.post('http://localhost:8082/api/auth/register', newUser);
       setSuccessMessage('Registration successful! You can now log in.');
     } catch (err) {
       setError('Registration failed. The email might already be in use.');
