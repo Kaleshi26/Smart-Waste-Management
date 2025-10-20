@@ -9,6 +9,6 @@ import java.util.List;
 
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
-    // Custom method to find all invoices for a specific resident by their ID
-    List<Invoice> findByResidentId(Long residentId);
+    // Custom method to find all invoices for a specific user by their ID
+    List<Invoice> findByUserId(Long userId);
 }

@@ -1,10 +1,11 @@
-// File: src/main/java/com/CSSEProject/SmartWasteManagement/payment/entity/Invoice.java
 package com.CSSEProject.SmartWasteManagement.payment.entity;
 
 import com.CSSEProject.SmartWasteManagement.user.entity.User;
 import jakarta.persistence.*;
 import lombok.Data;
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "invoices")
@@ -13,17 +14,38 @@ public class Invoice {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Long invoiceId;
 
-    // An invoice belongs to one resident
     @ManyToOne
-    @JoinColumn(name = "resident_id", nullable = false)
-    private User resident;
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
-    private LocalDate invoiceDate;
+    @ManyToOne
+    @JoinColumn(name = "cycle_id", nullable = false)
+    private BillingCycle cycle;
+
+    @Column(name = "total_amount", precision = 10, scale = 2)
+    private BigDecimal totalAmount;
+
+    @Column(name = "refund_amount", precision = 10, scale = 2)
+    private BigDecimal refundAmount;
+
+    @Column(name = "final_amount", precision = 10, scale = 2)
+    private BigDecimal finalAmount;
+
+    @Column(name = "due_date")
     private LocalDate dueDate;
-    private Double amount;
 
     @Enumerated(EnumType.STRING)
     private InvoiceStatus status;
+
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
+
+    @OneToOne(mappedBy = "invoice", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Payment payment;
+
+    public enum InvoiceStatus {
+        PENDING, PAID, FAILED
+    }
 }

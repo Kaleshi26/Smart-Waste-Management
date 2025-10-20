@@ -2,7 +2,6 @@
 package com.CSSEProject.SmartWasteManagement.payment.service;
 
 import com.CSSEProject.SmartWasteManagement.payment.entity.Invoice;
-import com.CSSEProject.SmartWasteManagement.payment.entity.InvoiceStatus;
 import com.CSSEProject.SmartWasteManagement.payment.repository.InvoiceRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -16,7 +15,7 @@ public class PaymentService {
     private InvoiceRepository invoiceRepository;
 
     public List<Invoice> getInvoicesForUser(Long userId) {
-        return invoiceRepository.findByResidentId(userId);
+        return invoiceRepository.findByUserId(userId);
     }
 
     public Invoice payInvoice(Long invoiceId) {
@@ -25,13 +24,13 @@ public class PaymentService {
                 .orElseThrow(() -> new RuntimeException("Invoice not found with ID: " + invoiceId));
 
         // Check if the invoice is already paid
-        if (invoice.getStatus() == InvoiceStatus.PAID) {
+        if (invoice.getStatus() == Invoice.InvoiceStatus.PAID) {
             throw new RuntimeException("Invoice is already paid.");
         }
 
         // For this simulation, we'll just mark it as PAID.
         // A real system would have logic to connect to a payment gateway.
-        invoice.setStatus(InvoiceStatus.PAID);
+        invoice.setStatus(Invoice.InvoiceStatus.PAID);
 
         // Save the updated invoice back to the database
         return invoiceRepository.save(invoice);
