@@ -1,10 +1,14 @@
-// File: src/main/java/com/CSSEProject/SmartWasteManagement/payment/entity/Invoice.java
 package com.CSSEProject.SmartWasteManagement.payment.entity;
 
 import com.CSSEProject.SmartWasteManagement.user.entity.User;
+import com.CSSEProject.SmartWasteManagement.waste.entity.CollectionEvent;
+import com.CSSEProject.SmartWasteManagement.waste.entity.RecyclingCollection;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "invoices")
@@ -15,15 +19,54 @@ public class Invoice {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // An invoice belongs to one resident
-    @ManyToOne
-    @JoinColumn(name = "resident_id", nullable = false)
-    private User resident;
+    @Column(unique = true, nullable = false)
+    private String invoiceNumber;
 
+    @Column(nullable = false)
     private LocalDate invoiceDate;
+
+    @Column(nullable = false)
     private LocalDate dueDate;
-    private Double amount;
 
     @Enumerated(EnumType.STRING)
-    private InvoiceStatus status;
+    @Column(nullable = false)
+    private InvoiceStatus status = InvoiceStatus.PENDING;
+
+    // Billing period
+    @Column(nullable = false)
+    private LocalDate periodStart;
+
+    @Column(nullable = false)
+    private LocalDate periodEnd;
+
+    // Charges
+    @Column(nullable = false)
+    private Double baseCharge = 0.0;
+
+    @Column(nullable = false)
+    private Double weightBasedCharge = 0.0;
+
+    @Column(nullable = false)
+    private Double recyclingCredits = 0.0;
+
+    @Column(nullable = false)
+    private Double totalAmount = 0.0;
+
+    // Relationships
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "resident_id", nullable = false)
+    @JsonIgnore // Add this to break the cycle
+
+    private User resident;
+
+    @OneToMany(mappedBy = "invoice", fetch = FetchType.LAZY)
+    private List<CollectionEvent> collections = new ArrayList<>();
+
+    @OneToMany(mappedBy = "invoice", fetch = FetchType.LAZY)
+    private List<RecyclingCollection> recyclingCollections = new ArrayList<>();
+
+    public Invoice() {
+        this.invoiceDate = LocalDate.now();
+        this.dueDate = LocalDate.now().plusDays(30); // 30 days from invoice date
+    }
 }

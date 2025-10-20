@@ -4,9 +4,10 @@ import com.CSSEProject.SmartWasteManagement.waste.entity.BinType;
 import lombok.Data;
 
 @Data
-public class CollectionRequestDto {
+public class RecyclingRequestDto {
     private String binId;
     private Long staffId;
+    private BinType wasteType;
     private Double weight;
-    private BinType wasteType = BinType.GENERAL_WASTE; // Default to general waste
+    private Long residentId;
 }

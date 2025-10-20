@@ -1,8 +1,9 @@
-// File: src/main/java/com/CSSEProject/SmartWasteManagement/payment/entity/InvoiceStatus.java
 package com.CSSEProject.SmartWasteManagement.payment.entity;
 
 public enum InvoiceStatus {
+    PENDING,
     PAID,
-    UNPAID,
-    PARTIALLY_PAID
+    OVERDUE,
+    PARTIALLY_PAID,
+    CANCELLED
 }

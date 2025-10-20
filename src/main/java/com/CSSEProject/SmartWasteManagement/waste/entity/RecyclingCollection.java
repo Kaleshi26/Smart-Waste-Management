@@ -2,15 +2,14 @@ package com.CSSEProject.SmartWasteManagement.waste.entity;
 
 import com.CSSEProject.SmartWasteManagement.user.entity.User;
 import com.CSSEProject.SmartWasteManagement.payment.entity.Invoice;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "collection_events")
+@Table(name = "recycling_collections")
 @Data
-public class CollectionEvent {
+public class RecyclingCollection {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -19,29 +18,26 @@ public class CollectionEvent {
     @Column(nullable = false)
     private LocalDateTime collectionTime;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private BinType wasteType;
+
     @Column(nullable = false)
     private Double weight;
 
-    private Double calculatedCharge;
+    @Column(nullable = false)
+    private Double paybackAmount;
 
-    // FIXED: Remove referencedColumnName or ensure it matches the actual PK
+    // Relationships
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "bin_id") // Remove referencedColumnName
-    private WasteBin wasteBin;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "collector_id")
-    @JsonIgnore // ← ADD THIS LINE to break the cycle
-
-    private User collector;
+    @JoinColumn(name = "resident_id", nullable = false)
+    private User resident;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invoice_id")
-    @JsonIgnore // Add this to break the cycle
-
     private Invoice invoice;
 
-    public CollectionEvent() {
+    public RecyclingCollection() {
         this.collectionTime = LocalDateTime.now();
     }
 }
