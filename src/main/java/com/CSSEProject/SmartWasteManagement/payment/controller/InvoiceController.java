@@ -1,7 +1,9 @@
 package com.CSSEProject.SmartWasteManagement.payment.controller;
 
+import com.CSSEProject.SmartWasteManagement.payment.entity.Invoice;
 import com.CSSEProject.SmartWasteManagement.payment.service.InvoiceService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
@@ -14,6 +16,25 @@ public class InvoiceController {
 
     @Autowired
     private InvoiceService invoiceService;
+
+    // ADD THIS METHOD - Get Invoice Status
+    @GetMapping("/{invoiceId}/status")
+    public ResponseEntity<?> getInvoiceStatus(@PathVariable Long invoiceId) {
+        try {
+            Invoice invoice = invoiceService.getInvoiceById(invoiceId);
+            return ResponseEntity.ok(Map.of(
+                    "invoiceId", invoice.getId(),
+                    "invoiceNumber", invoice.getInvoiceNumber(),
+                    "status", invoice.getStatus().toString(),
+                    "totalAmount", invoice.getTotalAmount(),
+                    "dueDate", invoice.getDueDate()
+            ));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
 
     @PostMapping("/generate/{residentId}")
     public ResponseEntity<?> generateMonthlyInvoice(@PathVariable Long residentId) {

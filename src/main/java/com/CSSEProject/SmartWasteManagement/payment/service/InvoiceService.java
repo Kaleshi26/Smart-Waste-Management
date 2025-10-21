@@ -33,6 +33,10 @@ public class InvoiceService {
 
     @Autowired
     private BillingService billingService;
+    public Invoice getInvoiceById(Long invoiceId) {
+        return invoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + invoiceId));
+    }
 
     @Transactional
     public Invoice generateMonthlyInvoice(Long residentId) {

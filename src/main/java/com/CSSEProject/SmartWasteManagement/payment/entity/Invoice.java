@@ -60,9 +60,11 @@ public class Invoice {
     private User resident;
 
     @OneToMany(mappedBy = "invoice", fetch = FetchType.LAZY)
+    @JsonIgnore
     private List<CollectionEvent> collections = new ArrayList<>();
 
     @OneToMany(mappedBy = "invoice", fetch = FetchType.LAZY)
+    @JsonIgnore
     private List<RecyclingCollection> recyclingCollections = new ArrayList<>();
 
     public Invoice() {
