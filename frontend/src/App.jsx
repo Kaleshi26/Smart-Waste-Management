@@ -1,76 +1,137 @@
 // File: frontend/src/App.jsx
-import React, { useState } from 'react';
-import LoginPage from './components/LoginPage';
-import SignupPage from './components/SignupPage';
-import AdminDashboard from './components/AdminDashboard';
-import StaffDashboard from './components/StaffDashboard';
-import ResidentDashboard from './components/ResidentDashboard';
-import Sidebar from './components/Sidebar';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Dashboard from './pages/Dashboard';
+import Profile from './pages/Profile';
+import Bins from './pages/Bins';
+import Invoices from './pages/Invoices';
+import Payments from './pages/Payments';
+import StaffDashboard from './pages/StaffDashboard'; // Add this import
+import Layout from './components/Layout';
 import './App.css';
 
 function App() {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [view, setView] = useState('login');
+    const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
 
-  const handleLoginSuccess = (userData) => {
-    setCurrentUser(userData);
-  };
+    useEffect(() => {
+        // Check if user is logged in (from localStorage)
+        const savedUser = localStorage.getItem('currentUser');
+        if (savedUser) {
+            try {
+                const userData = JSON.parse(savedUser);
+                // Ensure user object has proper structure
+                setUser(normalizeUser(userData));
+            } catch (error) {
+                console.error('Error parsing saved user:', error);
+                localStorage.removeItem('currentUser');
+            }
+        }
+        setLoading(false);
+    }, []);
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setView('login');
-  };
+    // Normalize user object to ensure it has the expected structure
+    const normalizeUser = (userData) => {
+        // Handle different response formats from backend
+        if (userData.user) {
+            return userData.user; // If response has { user: {...} }
+        }
+        if (userData.id) {
+            return userData; // If response is the user object directly
+        }
+        // Fallback: create a normalized user object
+        return {
+            id: userData.id || userData.userId || Math.random().toString(36).substr(2, 9),
+            name: userData.name || 'User',
+            email: userData.email || '',
+            role: userData.role || 'ROLE_RESIDENT',
+            address: userData.address || '',
+            phone: userData.phone || '',
+            residentId: userData.residentId || null
+        };
+    };
 
-  const renderDashboard = () => {
-    switch (currentUser.role) {
-      case 'ROLE_ADMIN':
-        return <AdminDashboard user={currentUser} />;
-      case 'ROLE_STAFF':
-        return <StaffDashboard user={currentUser} />;
-      case 'ROLE_RESIDENT':
-        return <ResidentDashboard user={currentUser} />;
-      default:
-        return <p>Unknown role. Please contact support.</p>;
+    const handleLogin = (userData) => {
+        const normalizedUser = normalizeUser(userData);
+        setUser(normalizedUser);
+        localStorage.setItem('currentUser', JSON.stringify(normalizedUser));
+    };
+
+    const handleLogout = () => {
+        setUser(null);
+        localStorage.removeItem('currentUser');
+    };
+
+    // Add this function to render different dashboards based on user role
+    const renderDashboard = () => {
+        if (!user || !user.role) {
+            return <p>Loading user information...</p>;
+        }
+
+        switch (user.role) {
+            case 'ROLE_ADMIN':
+                return <div>Admin Dashboard - Coming Soon</div>; // You can create AdminDashboard later
+            case 'ROLE_STAFF':
+                return <StaffDashboard user={user} />;
+            case 'ROLE_RESIDENT':
+                return <Dashboard user={user} />;
+            default:
+                return <p>Unknown role. Please contact support.</p>;
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="loading-screen">
+                <div className="loading-spinner"></div>
+                <p>Loading Smart Waste Management...</p>
+            </div>
+        );
     }
-  };
 
-  const renderAuthPage = () => {
-    if (view === 'login') {
-      return <LoginPage onLoginSuccess={handleLoginSuccess} onNavigateToSignup={() => setView('signup')} />;
-    } else {
-      return <SignupPage onNavigateToLogin={() => setView('login')} />;
-    }
-  };
+    return (
+        <Router>
+            <div className="App">
+                <Toaster position="top-right" />
+                <Routes>
+                    <Route
+                        path="/login"
+                        element={
+                            user ? <Navigate to="/dashboard" /> : <Login onLogin={handleLogin} />
+                        }
+                    />
+                    <Route
+                        path="/register"
+                        element={
+                            user ? <Navigate to="/dashboard" /> : <Register onLogin={handleLogin} />
+                        }
+                    />
+                    <Route
+                        path="/"
+                        element={
+                            user ? <Navigate to="/dashboard" /> : <Navigate to="/login" />
+                        }
+                    />
 
-  // The return statement is the main change. We use a React Fragment (<>)
-  // to avoid adding an unnecessary wrapper div around the auth pages.
-  return (
-    <>
-      {!currentUser ? (
-        // If logged out, render the auth page directly.
-        // The centering is handled by the .login-container class inside the LoginPage component.
-        renderAuthPage()
-      ) : (
-        // If logged in, render the main dashboard layout with the sidebar.
-        <div className="app-wrapper">
-          <Sidebar />
-          <div className="content-wrapper">
-            <header className="app-header">
-              <div className="user-info">
-                <span>Welcome, {currentUser.name}!</span>
-                <button onClick={handleLogout} className="logout-button">
-                  Logout
-                </button>
-              </div>
-            </header>
-            <main className="main-content">
-              {renderDashboard()}
-            </main>
-          </div>
-        </div>
-      )}
-    </>
-  );
+                    {/* Protected Routes */}
+                    {user && (
+                        <Route element={<Layout user={user} onLogout={handleLogout} />}>
+                            <Route path="/dashboard" element={renderDashboard()} />
+                            <Route path="/profile" element={<Profile user={user} />} />
+                            <Route path="/bins" element={<Bins user={user} />} />
+                            <Route path="/invoices" element={<Invoices user={user} />} />
+                            <Route path="/payments" element={<Payments user={user} />} />
+                        </Route>
+                    )}
+
+                    <Route path="*" element={<Navigate to={user ? "/dashboard" : "/login"} />} />
+                </Routes>
+            </div>
+        </Router>
+    );
 }
 
 export default App;

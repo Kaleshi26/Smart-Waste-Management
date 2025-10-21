@@ -2,6 +2,7 @@ package com.CSSEProject.SmartWasteManagement.user.entity;
 
 import com.CSSEProject.SmartWasteManagement.waste.entity.WasteBin;
 import com.CSSEProject.SmartWasteManagement.payment.entity.Invoice;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.time.LocalDate;
@@ -41,12 +42,18 @@ public class User {
 
     // Relationships
     @OneToMany(mappedBy = "resident", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnore
+
     private List<WasteBin> wasteBins = new ArrayList<>();
 
     @OneToMany(mappedBy = "collector", fetch = FetchType.LAZY)
+    @JsonIgnore
+
     private List<com.CSSEProject.SmartWasteManagement.waste.entity.CollectionEvent> collectionsMade = new ArrayList<>();
 
     @OneToMany(mappedBy = "resident", fetch = FetchType.LAZY)
+    @JsonIgnore
+
     private List<Invoice> invoices = new ArrayList<>();
 
     public User() {}
