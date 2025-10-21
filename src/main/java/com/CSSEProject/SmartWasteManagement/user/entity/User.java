@@ -39,6 +39,14 @@ public class User {
     // Resident-specific fields
     private String residentId; // Unique ID from waste management authority
     private LocalDate accountActivationDate;
+    @Column(name = "pending_charges")
+    private Double pendingCharges = 0.0;
+
+    @Column(name = "total_charges")
+    private Double totalCharges = 0.0;
+
+    @Column(name = "recycling_credits")
+    private Double recyclingCredits = 0.0;
 
     // Relationships
     @OneToMany(mappedBy = "resident", cascade = CascadeType.ALL, fetch = FetchType.LAZY)

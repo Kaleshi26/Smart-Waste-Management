@@ -1,7 +1,7 @@
 package com.CSSEProject.SmartWasteManagement.waste.entity;
 
-import com.CSSEProject.SmartWasteManagement.user.entity.User;
 import com.CSSEProject.SmartWasteManagement.payment.entity.Invoice;
+import com.CSSEProject.SmartWasteManagement.user.entity.User;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.time.LocalDateTime;

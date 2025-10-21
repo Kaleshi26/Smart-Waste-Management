@@ -9,8 +9,12 @@ import Profile from './pages/Profile';
 import Bins from './pages/Bins';
 import Invoices from './pages/Invoices';
 import Payments from './pages/Payments';
-import StaffDashboard from './pages/StaffDashboard'; // Add this import
+import StaffDashboard from './pages/StaffDashboard';
+import StaffScan from './pages/StaffScan';
+import StaffCollections from './pages/StaffCollections';
+import StaffProfile from './pages/StaffProfile';
 import Layout from './components/Layout';
+import StaffLayout from './components/StaffLayout';
 import './App.css';
 
 function App() {
@@ -65,7 +69,7 @@ function App() {
         localStorage.removeItem('currentUser');
     };
 
-    // Add this function to render different dashboards based on user role
+    // Function to render different dashboards based on user role
     const renderDashboard = () => {
         if (!user || !user.role) {
             return <p>Loading user information...</p>;
@@ -73,13 +77,28 @@ function App() {
 
         switch (user.role) {
             case 'ROLE_ADMIN':
-                return <div>Admin Dashboard - Coming Soon</div>; // You can create AdminDashboard later
+                return <div>Admin Dashboard - Coming Soon</div>;
             case 'ROLE_STAFF':
                 return <StaffDashboard user={user} />;
             case 'ROLE_RESIDENT':
                 return <Dashboard user={user} />;
             default:
                 return <p>Unknown role. Please contact support.</p>;
+        }
+    };
+
+    // Function to determine default route based on user role
+    const getDefaultRoute = () => {
+        if (!user) return '/login';
+
+        switch (user.role) {
+            case 'ROLE_STAFF':
+                return '/staff/dashboard';
+            case 'ROLE_ADMIN':
+                return '/admin/dashboard'; // You can create this later
+            case 'ROLE_RESIDENT':
+            default:
+                return '/dashboard';
         }
     };
 
@@ -97,29 +116,30 @@ function App() {
             <div className="App">
                 <Toaster position="top-right" />
                 <Routes>
+                    {/* Public Routes */}
                     <Route
                         path="/login"
                         element={
-                            user ? <Navigate to="/dashboard" /> : <Login onLogin={handleLogin} />
+                            user ? <Navigate to={getDefaultRoute()} /> : <Login onLogin={handleLogin} />
                         }
                     />
                     <Route
                         path="/register"
                         element={
-                            user ? <Navigate to="/dashboard" /> : <Register onLogin={handleLogin} />
+                            user ? <Navigate to={getDefaultRoute()} /> : <Register onLogin={handleLogin} />
                         }
                     />
                     <Route
                         path="/"
                         element={
-                            user ? <Navigate to="/dashboard" /> : <Navigate to="/login" />
+                            user ? <Navigate to={getDefaultRoute()} /> : <Navigate to="/login" />
                         }
                     />
 
-                    {/* Protected Routes */}
-                    {user && (
+                    {/* Resident Routes */}
+                    {user && user.role === 'ROLE_RESIDENT' && (
                         <Route element={<Layout user={user} onLogout={handleLogout} />}>
-                            <Route path="/dashboard" element={renderDashboard()} />
+                            <Route path="/dashboard" element={<Dashboard user={user} />} />
                             <Route path="/profile" element={<Profile user={user} />} />
                             <Route path="/bins" element={<Bins user={user} />} />
                             <Route path="/invoices" element={<Invoices user={user} />} />
@@ -127,7 +147,32 @@ function App() {
                         </Route>
                     )}
 
-                    <Route path="*" element={<Navigate to={user ? "/dashboard" : "/login"} />} />
+                    {/* Staff Routes */}
+                    {user && user.role === 'ROLE_STAFF' && (
+                        <Route element={<StaffLayout user={user} onLogout={handleLogout} />}>
+                            <Route path="/staff/dashboard" element={<StaffDashboard user={user} />} />
+                            <Route path="/staff/scan" element={<StaffScan user={user} />} />
+                            <Route path="/staff/collections" element={<StaffCollections user={user} />} />
+                            <Route path="/staff/profile" element={<StaffProfile user={user} />} />
+                            {/* Redirect staff users from regular dashboard to staff dashboard */}
+                            <Route path="/dashboard" element={<Navigate to="/staff/dashboard" />} />
+                            <Route path="/profile" element={<Navigate to="/staff/profile" />} />
+                        </Route>
+                    )}
+
+                    {/* Admin Routes - You can add these later */}
+                    {user && user.role === 'ROLE_ADMIN' && (
+                        <Route element={<Layout user={user} onLogout={handleLogout} />}>
+                            <Route path="/dashboard" element={<div>Admin Dashboard - Coming Soon</div>} />
+                            <Route path="/profile" element={<Profile user={user} />} />
+                        </Route>
+                    )}
+
+                    {/* Fallback Routes */}
+                    <Route
+                        path="*"
+                        element={<Navigate to={user ? getDefaultRoute() : "/login"} />}
+                    />
                 </Routes>
             </div>
         </Router>

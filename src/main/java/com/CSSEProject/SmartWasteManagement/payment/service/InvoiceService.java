@@ -3,16 +3,20 @@ package com.CSSEProject.SmartWasteManagement.payment.service;
 import com.CSSEProject.SmartWasteManagement.payment.entity.Invoice;
 import com.CSSEProject.SmartWasteManagement.payment.entity.InvoiceStatus;
 import com.CSSEProject.SmartWasteManagement.payment.entity.Payment;
+import com.CSSEProject.SmartWasteManagement.payment.entity.PaymentStatus;
 import com.CSSEProject.SmartWasteManagement.payment.repository.InvoiceRepository;
 import com.CSSEProject.SmartWasteManagement.payment.repository.PaymentRepository;
 import com.CSSEProject.SmartWasteManagement.user.entity.User;
 import com.CSSEProject.SmartWasteManagement.user.service.UserService;
 import com.CSSEProject.SmartWasteManagement.waste.entity.CollectionEvent;
 import com.CSSEProject.SmartWasteManagement.waste.entity.RecyclingCollection;
+import com.CSSEProject.SmartWasteManagement.waste.repository.CollectionEventRepository;
+import com.CSSEProject.SmartWasteManagement.waste.repository.RecyclingCollectionRepository;
 import com.CSSEProject.SmartWasteManagement.waste.service.CollectionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.time.LocalDate;
 import java.util.List;
 
@@ -33,6 +37,13 @@ public class InvoiceService {
 
     @Autowired
     private BillingService billingService;
+
+    @Autowired
+    private CollectionEventRepository collectionEventRepository;
+
+    @Autowired
+    private RecyclingCollectionRepository recyclingCollectionRepository;
+
     public Invoice getInvoiceById(Long invoiceId) {
         return invoiceRepository.findById(invoiceId)
                 .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + invoiceId));
@@ -52,22 +63,25 @@ public class InvoiceService {
             throw new RuntimeException("Invoice already exists for period: " + periodStart + " to " + periodEnd);
         }
 
-        // Get uninvoiced collections and recycling
+        // Get uninvoiced collections for this resident
         List<CollectionEvent> collections = collectionService.getUninvoicedCollections().stream()
-                .filter(ce -> ce.getWasteBin().getResident().getId().equals(residentId))
+                .filter(ce -> ce.getWasteBin() != null &&
+                        ce.getWasteBin().getResident() != null &&
+                        ce.getWasteBin().getResident().getId().equals(residentId))
                 .toList();
 
-        List<RecyclingCollection> recyclings = collectionService.getUninvoicedRecycling().stream()
-                .filter(rc -> rc.getResident().getId().equals(residentId))
+        // Get uninvoiced recycling collections for this resident
+        List<RecyclingCollection> recyclings = getUninvoicedRecyclingCollections().stream()
+                .filter(rc -> rc.getResident() != null && rc.getResident().getId().equals(residentId))
                 .toList();
 
         // Calculate charges and credits
         Double totalCharges = collections.stream()
-                .mapToDouble(CollectionEvent::getCalculatedCharge)
+                .mapToDouble(ce -> ce.getCalculatedCharge() != null ? ce.getCalculatedCharge() : 0.0)
                 .sum();
 
         Double totalCredits = recyclings.stream()
-                .mapToDouble(RecyclingCollection::getPaybackAmount)
+                .mapToDouble(rc -> rc.getPaybackAmount() != null ? rc.getPaybackAmount() : 0.0)
                 .sum();
 
         Double finalAmount = Math.max(0, totalCharges - totalCredits); // Ensure non-negative
@@ -76,6 +90,8 @@ public class InvoiceService {
         Invoice invoice = new Invoice();
         invoice.setResident(resident);
         invoice.setInvoiceNumber(generateInvoiceNumber());
+        invoice.setInvoiceDate(LocalDate.now());
+        invoice.setDueDate(LocalDate.now().plusDays(30)); // Due in 30 days
         invoice.setPeriodStart(periodStart);
         invoice.setPeriodEnd(periodEnd);
         invoice.setBaseCharge(0.0); // Could be base fee from billing model
@@ -86,15 +102,16 @@ public class InvoiceService {
 
         Invoice savedInvoice = invoiceRepository.save(invoice);
 
-        // Link collections and recycling to invoice - FIXED: Use repositories directly
+        // Link collections to invoice
         collections.forEach(ce -> {
             ce.setInvoice(savedInvoice);
-            collectionService.getCollectionEventRepository().save(ce);
+            collectionEventRepository.save(ce);
         });
 
+        // Link recycling collections to invoice
         recyclings.forEach(rc -> {
             rc.setInvoice(savedInvoice);
-            collectionService.getRecyclingCollectionRepository().save(rc);
+            recyclingCollectionRepository.save(rc);
         });
 
         return savedInvoice;
@@ -120,15 +137,15 @@ public class InvoiceService {
         payment.setAmount(invoice.getTotalAmount());
         payment.setPaymentMethod(paymentMethod);
         payment.setTransactionId(transactionId);
-        payment.setStatus(com.CSSEProject.SmartWasteManagement.payment.entity.PaymentStatus.COMPLETED);
+        payment.setStatus(PaymentStatus.COMPLETED);
 
         // Update invoice status
         invoice.setStatus(InvoiceStatus.PAID);
 
         invoiceRepository.save(invoice);
-        paymentRepository.save(payment); // Now we save to payment repository
+        Payment savedPayment = paymentRepository.save(payment);
 
-        return payment;
+        return savedPayment;
     }
 
     public List<Invoice> getInvoicesByResident(Long residentId) {
@@ -145,6 +162,13 @@ public class InvoiceService {
 
     public Double getTotalRevenueBetween(LocalDate start, LocalDate end) {
         return invoiceRepository.getTotalRevenueBetween(start, end);
+    }
+
+    // Helper method to get uninvoiced recycling collections
+    private List<RecyclingCollection> getUninvoicedRecyclingCollections() {
+        // If you have a repository method for this, use it
+        // For now, return empty list or implement based on your structure
+        return recyclingCollectionRepository.findByInvoiceIsNull();
     }
 
     private String generateInvoiceNumber() {

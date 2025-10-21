@@ -1,12 +1,21 @@
 package com.CSSEProject.SmartWasteManagement.dto;
 
-import com.CSSEProject.SmartWasteManagement.waste.entity.BinType;
 import lombok.Data;
 
 @Data
 public class CollectionRequestDto {
     private String binId;
-    private Long staffId;
+    private String rfidTag;
+    private Long collectorId;
+    private String truckId;
     private Double weight;
-    private BinType wasteType = BinType.GENERAL_WASTE; // Default to general waste
+    private boolean offlineMode = false;
+    private String deviceId;
+    private java.time.LocalDateTime collectionTime;
+    private Double gpsLatitude;
+    private Double gpsLongitude;
+
+    public CollectionRequestDto() {
+        this.collectionTime = java.time.LocalDateTime.now();
+    }
 }

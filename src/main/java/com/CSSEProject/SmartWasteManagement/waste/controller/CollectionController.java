@@ -3,6 +3,7 @@ package com.CSSEProject.SmartWasteManagement.waste.controller;
 import com.CSSEProject.SmartWasteManagement.dto.CollectionRequestDto;
 import com.CSSEProject.SmartWasteManagement.dto.RecyclingRequestDto;
 import com.CSSEProject.SmartWasteManagement.waste.service.CollectionService;
+import com.CSSEProject.SmartWasteManagement.waste.service.OfflineSyncService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,18 +18,89 @@ public class CollectionController {
     @Autowired
     private CollectionService collectionService;
 
+    @Autowired
+    private OfflineSyncService offlineSyncService;
+
     @PostMapping("/record")
     public ResponseEntity<?> recordCollection(@RequestBody CollectionRequestDto request) {
         try {
+            // Check if offline mode is requested
+            if (request.isOfflineMode()) {
+                return recordOfflineCollection(request, request.getDeviceId());
+            }
+            
             return ResponseEntity.ok(Map.of(
                 "message", "Collection recorded successfully",
-                "collection", collectionService.recordCollection(request)
+                "collection", collectionService.recordCollection(request),
+                "feedback", Map.of(
+                    "audio", "Collection recorded successfully",
+                    "visual", "✅ Collection recorded for bin " + request.getBinId()
+                )
+            ));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "error", e.getMessage(),
+                "feedback", Map.of(
+                    "audio", "Error. " + e.getMessage(),
+                    "visual", "❌ " + e.getMessage()
+                )
+            ));
+        }
+    }
+
+    @PostMapping("/record-offline")
+    public ResponseEntity<?> recordOfflineCollection(@RequestBody CollectionRequestDto request,
+                                                    @RequestHeader(value = "Device-Id", required = false) String deviceId) {
+        try {
+            if (deviceId == null) {
+                deviceId = "device-" + request.getCollectorId();
+            }
+            
+            var offlineCollection = offlineSyncService.recordOfflineCollection(request, deviceId);
+            return ResponseEntity.ok(Map.of(
+                "message", "Collection recorded offline. Will sync when online.",
+                "offlineId", offlineCollection.getId(),
+                "pendingSyncCount", offlineSyncService.getPendingCollectionCount(deviceId),
+                "feedback", Map.of(
+                    "audio", "Collection recorded offline",
+                    "visual", "📱 Collection saved offline for sync"
+                )
             ));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
+    @PostMapping("/sync-offline")
+    public ResponseEntity<?> syncOfflineCollections(@RequestHeader(value = "Device-Id") String deviceId) {
+        try {
+            offlineSyncService.syncPendingCollections(deviceId);
+            return ResponseEntity.ok(Map.of(
+                "message", "Offline collections synced successfully",
+                "feedback", Map.of(
+                    "audio", "Offline collections synced",
+                    "visual", "🔄 Offline collections synced to server"
+                )
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/offline/pending")
+    public ResponseEntity<?> getPendingOfflineCollections(@RequestHeader(value = "Device-Id") String deviceId) {
+        try {
+            var pending = offlineSyncService.getPendingCollections(deviceId);
+            return ResponseEntity.ok(Map.of(
+                "pendingCollections", pending,
+                "count", pending.size()
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // Keep all your existing endpoints...
     @PostMapping("/recycling")
     public ResponseEntity<?> recordRecyclingCollection(@RequestBody RecyclingRequestDto request) {
         try {
