@@ -15,6 +15,7 @@ import StaffCollections from './pages/StaffCollections';
 import StaffProfile from './pages/StaffProfile';
 import Layout from './components/Layout';
 import StaffLayout from './components/StaffLayout';
+import Schedules from './pages/Schedules';
 import './App.css';
 
 function App() {
@@ -141,6 +142,8 @@ function App() {
                         <Route element={<Layout user={user} onLogout={handleLogout} />}>
                             <Route path="/dashboard" element={<Dashboard user={user} />} />
                             <Route path="/profile" element={<Profile user={user} />} />
+                            <Route path="/schedules" element={<Schedules user={user} />} />
+
                             <Route path="/bins" element={<Bins user={user} />} />
                             <Route path="/invoices" element={<Invoices user={user} />} />
                             <Route path="/payments" element={<Payments user={user} />} />

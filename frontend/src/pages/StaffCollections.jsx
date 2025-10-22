@@ -19,6 +19,8 @@ const StaffCollections = ({ user }) => {
     const fetchCollections = async () => {
         try {
             const response = await axios.get(`http://localhost:8082/api/waste/collections/collector/${user.id}`);
+
+            // The response now includes proper bin details
             setCollections(response.data || []);
         } catch (error) {
             console.error('Error fetching collections:', error);
@@ -27,7 +29,6 @@ const StaffCollections = ({ user }) => {
             setLoading(false);
         }
     };
-
     const filteredCollections = collections.filter(collection => {
         if (filter === 'all') return true;
         if (filter === 'today') {

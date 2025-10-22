@@ -2,11 +2,18 @@ package com.CSSEProject.SmartWasteManagement.payment.controller;
 
 import com.CSSEProject.SmartWasteManagement.payment.entity.Invoice;
 import com.CSSEProject.SmartWasteManagement.payment.service.InvoiceService;
+import com.CSSEProject.SmartWasteManagement.user.entity.User;
+import com.CSSEProject.SmartWasteManagement.user.service.UserService;
+import com.CSSEProject.SmartWasteManagement.waste.entity.CollectionEvent;
+import com.CSSEProject.SmartWasteManagement.waste.entity.RecyclingCollection;
+import com.CSSEProject.SmartWasteManagement.waste.repository.CollectionEventRepository;
+import com.CSSEProject.SmartWasteManagement.waste.repository.RecyclingCollectionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -14,8 +21,43 @@ import java.util.Map;
 @CrossOrigin(origins = "http://localhost:5173")
 public class InvoiceController {
 
+
     @Autowired
     private InvoiceService invoiceService;
+
+    @Autowired
+    private UserService userService;
+
+    @Autowired
+    private CollectionEventRepository collectionEventRepository;
+
+    @Autowired
+    private RecyclingCollectionRepository recyclingCollectionRepository; // FIXED: Use correct repository
+
+    @GetMapping("/debug/resident/{residentId}")
+    public ResponseEntity<?> debugResidentInvoiceData(@PathVariable Long residentId) {
+        try {
+            User resident = userService.getUserById(residentId);
+
+            List<CollectionEvent> collections = collectionEventRepository.findUninvoicedByResident(residentId);
+            List<RecyclingCollection> recyclings = recyclingCollectionRepository.findUninvoicedByResident(residentId); // FIXED
+
+            return ResponseEntity.ok(Map.of(
+                    "resident", Map.of(
+                            "id", resident.getId(),
+                            "name", resident.getName(),
+                            "pendingCharges", resident.getPendingCharges(),
+                            "recyclingCredits", resident.getRecyclingCredits()
+                    ),
+                    "uninvoicedCollections", collections.size(),
+                    "uninvoicedRecycling", recyclings.size(),
+                    "canGenerateInvoice", !collections.isEmpty() || !recyclings.isEmpty() ||
+                            (resident.getPendingCharges() != null && resident.getPendingCharges() > 0)
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 
     // ADD THIS METHOD - Get Invoice Status
     @GetMapping("/{invoiceId}/status")

@@ -14,6 +14,7 @@ import com.CSSEProject.SmartWasteManagement.waste.repository.CollectionEventRepo
 import com.CSSEProject.SmartWasteManagement.waste.repository.RecyclingCollectionRepository;
 import com.CSSEProject.SmartWasteManagement.waste.service.CollectionService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,8 +33,7 @@ public class InvoiceService {
     @Autowired
     private UserService userService;
 
-    @Autowired
-    private CollectionService collectionService;
+
 
     @Autowired
     private BillingService billingService;
@@ -49,71 +49,119 @@ public class InvoiceService {
                 .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + invoiceId));
     }
 
+    private Invoice createInvoiceFromPendingCharges(User resident, LocalDate periodStart, LocalDate periodEnd) {
+        // Check if resident has any pending charges
+        Double pendingCharges = resident.getPendingCharges() != null ? resident.getPendingCharges() : 0.0;
+        Double recyclingCredits = resident.getRecyclingCredits() != null ? resident.getRecyclingCredits() : 0.0;
+
+        if (pendingCharges <= 0 && recyclingCredits <= 0) {
+            throw new RuntimeException("No collections, recycling, or pending charges to invoice for resident: " + resident.getName());
+        }
+
+        // Create minimal invoice from pending charges
+        Invoice invoice = new Invoice();
+        invoice.setResident(resident);
+        invoice.setInvoiceNumber(generateInvoiceNumber());
+        invoice.setInvoiceDate(LocalDate.now());
+        invoice.setDueDate(LocalDate.now().plusDays(30));
+        invoice.setPeriodStart(periodStart);
+        invoice.setPeriodEnd(periodEnd);
+        invoice.setBaseCharge(pendingCharges);
+        invoice.setWeightBasedCharge(0.0);
+        invoice.setRecyclingCredits(recyclingCredits);
+        invoice.setTotalAmount(Math.max(0, pendingCharges - recyclingCredits));
+        invoice.setStatus(InvoiceStatus.PENDING);
+
+        // Reset resident's charges after invoicing
+        resident.setPendingCharges(0.0);
+        resident.setRecyclingCredits(0.0);
+        userService.updateUser(resident); // You might need to add this method to UserService
+
+        return invoiceRepository.save(invoice);
+    }
     @Transactional
     public Invoice generateMonthlyInvoice(Long residentId) {
         User resident = userService.getUserById(residentId);
 
-        // Define billing period (previous month)
-        LocalDate periodEnd = LocalDate.now().withDayOfMonth(1).minusDays(1); // Last day of previous month
-        LocalDate periodStart = periodEnd.withDayOfMonth(1); // First day of previous month
+        // Use current month period
+        LocalDate periodStart = LocalDate.now().withDayOfMonth(1);
+        LocalDate periodEnd = LocalDate.now();
 
-        // Check if invoice already exists for this period
-        List<Invoice> existingInvoices = invoiceRepository.findInvoicesForDate(periodStart, residentId);
-        if (!existingInvoices.isEmpty()) {
-            throw new RuntimeException("Invoice already exists for period: " + periodStart + " to " + periodEnd);
+        // Get uninvoiced collections
+        List<CollectionEvent> collections = collectionEventRepository.findUninvoicedByResident(residentId);
+        List<RecyclingCollection> recyclings = recyclingCollectionRepository.findUninvoicedByResident(residentId);
+
+        // Check both collections AND pending charges
+        boolean hasCollections = !collections.isEmpty() || !recyclings.isEmpty();
+        boolean hasPendingCharges = resident.getPendingCharges() != null && resident.getPendingCharges() > 0;
+
+        System.out.println("🔍 Invoice Generation Debug:");
+        System.out.println("   - Resident: " + resident.getName() + " (ID: " + resident.getId() + ")");
+        System.out.println("   - Pending Charges: " + resident.getPendingCharges());
+        System.out.println("   - Uninvoiced Collections: " + collections.size());
+        System.out.println("   - Has Collections: " + hasCollections);
+        System.out.println("   - Has Pending Charges: " + hasPendingCharges);
+
+        if (!hasCollections && !hasPendingCharges) {
+            throw new RuntimeException("No collections, recycling, or pending charges to invoice for resident: " + resident.getName());
         }
 
-        // Get uninvoiced collections for this resident
-        List<CollectionEvent> collections = collectionService.getUninvoicedCollections().stream()
-                .filter(ce -> ce.getWasteBin() != null &&
-                        ce.getWasteBin().getResident() != null &&
-                        ce.getWasteBin().getResident().getId().equals(residentId))
-                .toList();
+        Double totalCharges = 0.0;
+        Double totalCredits = 0.0;
 
-        // Get uninvoiced recycling collections for this resident
-        List<RecyclingCollection> recyclings = getUninvoicedRecyclingCollections().stream()
-                .filter(rc -> rc.getResident() != null && rc.getResident().getId().equals(residentId))
-                .toList();
+        // Calculate from collections if they exist
+        if (hasCollections) {
+            totalCharges = collections.stream()
+                    .mapToDouble(ce -> ce.getCalculatedCharge() != null ? ce.getCalculatedCharge() : 0.0)
+                    .sum();
 
-        // Calculate charges and credits
-        Double totalCharges = collections.stream()
-                .mapToDouble(ce -> ce.getCalculatedCharge() != null ? ce.getCalculatedCharge() : 0.0)
-                .sum();
+            totalCredits = recyclings.stream()
+                    .mapToDouble(rc -> rc.getPaybackAmount() != null ? rc.getPaybackAmount() : 0.0)
+                    .sum();
+        }
 
-        Double totalCredits = recyclings.stream()
-                .mapToDouble(rc -> rc.getPaybackAmount() != null ? rc.getPaybackAmount() : 0.0)
-                .sum();
+        // ADD pending charges if they exist
+        if (hasPendingCharges) {
+            totalCharges += resident.getPendingCharges();
+        }
 
-        Double finalAmount = Math.max(0, totalCharges - totalCredits); // Ensure non-negative
+        Double finalAmount = Math.max(0, totalCharges - totalCredits);
 
         // Create invoice
         Invoice invoice = new Invoice();
         invoice.setResident(resident);
         invoice.setInvoiceNumber(generateInvoiceNumber());
         invoice.setInvoiceDate(LocalDate.now());
-        invoice.setDueDate(LocalDate.now().plusDays(30)); // Due in 30 days
+        invoice.setDueDate(LocalDate.now().plusDays(30));
         invoice.setPeriodStart(periodStart);
         invoice.setPeriodEnd(periodEnd);
-        invoice.setBaseCharge(0.0); // Could be base fee from billing model
-        invoice.setWeightBasedCharge(totalCharges);
+        invoice.setBaseCharge(hasPendingCharges ? resident.getPendingCharges() : 0.0);
+        invoice.setWeightBasedCharge(hasCollections ? totalCharges : 0.0);
         invoice.setRecyclingCredits(totalCredits);
         invoice.setTotalAmount(finalAmount);
         invoice.setStatus(InvoiceStatus.PENDING);
 
         Invoice savedInvoice = invoiceRepository.save(invoice);
 
-        // Link collections to invoice
+        // Link collections to invoice (if any)
         collections.forEach(ce -> {
             ce.setInvoice(savedInvoice);
             collectionEventRepository.save(ce);
         });
 
-        // Link recycling collections to invoice
         recyclings.forEach(rc -> {
             rc.setInvoice(savedInvoice);
             recyclingCollectionRepository.save(rc);
         });
 
+        // RESET pending charges after invoicing
+        if (hasPendingCharges) {
+            resident.setPendingCharges(0.0);
+            userService.updateUser(resident);
+            System.out.println("✅ Reset pending charges for resident " + resident.getId());
+        }
+
+        System.out.println("✅ Invoice generated: " + savedInvoice.getInvoiceNumber() + " Amount: " + savedInvoice.getTotalAmount());
         return savedInvoice;
     }
 

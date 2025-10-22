@@ -1,7 +1,10 @@
 package com.CSSEProject.SmartWasteManagement.waste.entity;
 
 import com.CSSEProject.SmartWasteManagement.user.entity.User;
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.time.LocalDate;
@@ -11,41 +14,48 @@ import java.util.List;
 @Entity
 @Table(name = "waste_bins")
 @Data
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class WasteBin {
 
     @Id
     @Column(name = "bin_id")
-    private String binId; // RFID/QR code from physical device
+    private String binId;
 
-    @Column(nullable = false)
-    private String location; // GPS coordinates or address
+    private String location;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(name = "bin_type")
     private BinType binType;
 
-    private Double capacity; // in liters
-    private Double currentLevel; // 0-100% from sensors
+    private Double capacity;
+
+    @Column(name = "current_level")
+    private Double currentLevel = 0.0;
 
     @Enumerated(EnumType.STRING)
     private BinStatus status = BinStatus.ACTIVE;
 
-    // Digital tracking
+    @Column(name = "rfid_tag")
     private String rfidTag;
+
+    @Column(name = "qr_code")
     private String qrCode;
+
+    @Column(name = "installation_date")
     private LocalDate installationDate;
 
-    // Relationships
-    @ManyToOne(fetch = FetchType.LAZY)
+    // FIX: Use @JsonBackReference to break the cycle
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "resident_id")
-    @JsonIgnore // Add this to break the cycle
-
+    @JsonBackReference("resident-bins")
     private User resident;
 
+    // FIX: Use @JsonIgnore for collections to avoid circular references
     @OneToMany(mappedBy = "wasteBin", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    @JsonIgnore // ← ADD THIS LINE to break the cycle
-
+    @JsonIgnore
     private List<CollectionEvent> collections = new ArrayList<>();
 
-    public WasteBin() {}
+    @OneToMany(mappedBy = "wasteBin", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnore
+    private List<CollectionSchedule> schedules = new ArrayList<>();
 }

@@ -2,7 +2,7 @@ package com.CSSEProject.SmartWasteManagement.waste.entity;
 
 import com.CSSEProject.SmartWasteManagement.user.entity.User;
 import com.CSSEProject.SmartWasteManagement.payment.entity.Invoice;
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.time.LocalDateTime;
@@ -10,35 +10,33 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "collection_events")
 @Data
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class CollectionEvent {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(name = "collection_time")
     private LocalDateTime collectionTime;
 
-    @Column(nullable = false)
+    @Column
     private Double weight;
 
+    @Column(name = "calculated_charge")
     private Double calculatedCharge;
 
-    // FIXED: Remove referencedColumnName or ensure it matches the actual PK
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "bin_id") // Remove referencedColumnName
+    // FIX: Simple mapping without complex annotations
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "bin_id")
     private WasteBin wasteBin;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "collector_id")
-    @JsonIgnore // ← ADD THIS LINE to break the cycle
-
     private User collector;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invoice_id")
-    @JsonIgnore // Add this to break the cycle
-
     private Invoice invoice;
 
     public CollectionEvent() {

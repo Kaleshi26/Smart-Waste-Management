@@ -8,15 +8,16 @@ const Bins = ({ user }) => {
     const [loading, setLoading] = useState(true);
     const [selectedBin, setSelectedBin] = useState(null);
     const [showDetails, setShowDetails] = useState(false);
+    const [showLevelUpdate, setShowLevelUpdate] = useState(false);
+    const [updateLevel, setUpdateLevel] = useState(0);
+    const [updatingLevel, setUpdatingLevel] = useState(false);
 
     useEffect(() => {
         fetchBins();
     }, [user.id]);
 
-// In Bins.jsx - fix the API call
     const fetchBins = async () => {
         try {
-            // FIXED: Use the correct endpoint
             const response = await axios.get(`http://localhost:8082/api/waste/bins/resident/${user.id}`);
             setBins(response.data || []);
         } catch (error) {
@@ -47,6 +48,28 @@ const Bins = ({ user }) => {
     const handleViewDetails = (bin) => {
         setSelectedBin(bin);
         setShowDetails(true);
+    };
+
+    const handleUpdateLevel = async () => {
+        if (updateLevel < 0 || updateLevel > 100) {
+            toast.error('Level must be between 0 and 100');
+            return;
+        }
+
+        setUpdatingLevel(true);
+        try {
+            await axios.put(`http://localhost:8082/api/waste/bins/${selectedBin.binId}/level`, {
+                currentLevel: parseFloat(updateLevel)
+            });
+            toast.success('Bin level updated successfully!');
+            setShowLevelUpdate(false);
+            setShowDetails(false);
+            fetchBins();
+        } catch (error) {
+            toast.error(error.response?.data?.error || 'Failed to update bin level');
+        } finally {
+            setUpdatingLevel(false);
+        }
     };
 
     if (loading) {
@@ -86,8 +109,8 @@ const Bins = ({ user }) => {
                                         {bin.binId}
                                     </div>
                                     <span className={`status-badge status-${status.type}`}>
-                    {status.label}
-                  </span>
+                                        {status.label}
+                                    </span>
                                 </div>
 
                                 <div className="bin-details">
@@ -189,8 +212,8 @@ const Bins = ({ user }) => {
                                 <div className="detail-item">
                                     <label>Status:</label>
                                     <span className={`status-badge status-${getBinStatus(selectedBin).type}`}>
-                    {getBinStatus(selectedBin).label}
-                  </span>
+                                        {getBinStatus(selectedBin).label}
+                                    </span>
                                 </div>
                                 <div className="detail-item">
                                     <label>RFID Tag:</label>
@@ -204,6 +227,20 @@ const Bins = ({ user }) => {
                                     <label>Installation Date:</label>
                                     <span>{selectedBin.installationDate}</span>
                                 </div>
+                            </div>
+
+                            {/* Bin Actions */}
+                            <div className="bin-actions">
+                                <h4>Bin Management</h4>
+                                <button
+                                    onClick={() => {
+                                        setShowLevelUpdate(true);
+                                        setUpdateLevel(selectedBin.currentLevel || 0);
+                                    }}
+                                    className="btn btn-sm btn-primary"
+                                >
+                                    Update Bin Level
+                                </button>
                             </div>
 
                             {selectedBin.collections && selectedBin.collections.length > 0 && (
@@ -226,6 +263,49 @@ const Bins = ({ user }) => {
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Bin Level Update Modal - Separate from details modal */}
+            {showLevelUpdate && selectedBin && (
+                <div className="modal-overlay">
+                    <div className="modal">
+                        <div className="modal-header">
+                            <h3>Update Bin Level - {selectedBin.binId}</h3>
+                            <button
+                                onClick={() => setShowLevelUpdate(false)}
+                                className="btn btn-sm btn-secondary"
+                                disabled={updatingLevel}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="form-group">
+                                <label>Current Fill Level (%)</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="1"
+                                    value={updateLevel}
+                                    onChange={(e) => setUpdateLevel(e.target.value)}
+                                    className="form-input"
+                                    disabled={updatingLevel}
+                                />
+                                <small>Enter the current fill percentage (0-100%)</small>
+                            </div>
+                        </div>
+                        <div className="modal-actions">
+                            <button
+                                onClick={handleUpdateLevel}
+                                className="btn btn-primary btn-block"
+                                disabled={updatingLevel}
+                            >
+                                {updatingLevel ? 'Updating...' : 'Update Level'}
+                            </button>
                         </div>
                     </div>
                 </div>

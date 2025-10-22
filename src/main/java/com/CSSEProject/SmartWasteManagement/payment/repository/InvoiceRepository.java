@@ -22,4 +22,5 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     
     @Query("SELECT COUNT(i) FROM Invoice i WHERE i.status = 'PENDING' AND i.dueDate < CURRENT_DATE")
     Long getOverdueInvoiceCount();
+
 }

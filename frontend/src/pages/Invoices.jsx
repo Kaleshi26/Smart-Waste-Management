@@ -17,16 +17,29 @@ const Invoices = ({ user }) => {
 
     const fetchInvoices = async () => {
         try {
+            console.log('🔄 Fetching invoices for user ID:', user.id);
             const response = await axios.get(`http://localhost:8082/api/invoices/resident/${user.id}`);
-            setInvoices(response.data || []);
+            console.log('✅ Raw API response:', response.data);
+
+            // Check if response is array or object
+            if (Array.isArray(response.data)) {
+                console.log(`📋 Found ${response.data.length} invoices`);
+                setInvoices(response.data);
+            } else if (response.data && Array.isArray(response.data.invoices)) {
+                console.log(`📋 Found ${response.data.invoices.length} invoices in nested property`);
+                setInvoices(response.data.invoices);
+            } else {
+                console.log('❌ Unexpected response format:', response.data);
+                setInvoices([]);
+            }
         } catch (error) {
-            console.error('Error fetching invoices:', error);
+            console.error('❌ Error fetching invoices:', error);
+            console.error('Error response:', error.response?.data);
             toast.error('Failed to load invoices');
         } finally {
             setLoading(false);
         }
     };
-
     const handleGenerateInvoice = async () => {
         try {
             await axios.post(`http://localhost:8082/api/invoices/generate/${user.id}`);
