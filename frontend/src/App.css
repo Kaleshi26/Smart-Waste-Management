@@ -1479,3 +1479,190 @@ a:focus-visible {
         gap: 0.5rem;
     }
 }
+/* Add to your App.css */
+.admin-layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+.admin-sidebar {
+    width: 280px;
+    background: #1f2937;
+    color: white;
+    padding: 0;
+}
+
+.admin-sidebar .sidebar-header {
+    padding: 2rem 1.5rem;
+    border-bottom: 1px solid #374151;
+}
+
+.admin-sidebar .user-info {
+    margin-top: 1rem;
+}
+
+.admin-sidebar .user-name {
+    font-weight: 600;
+    display: block;
+}
+
+.admin-sidebar .user-role {
+    font-size: 0.875rem;
+    color: #9ca3af;
+}
+
+.admin-sidebar .nav-item {
+    display: flex;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    color: #d1d5db;
+    text-decoration: none;
+    border-left: 3px solid transparent;
+    transition: all 0.2s;
+}
+
+.admin-sidebar .nav-item:hover {
+    background: #374151;
+    color: white;
+}
+
+.admin-sidebar .nav-item.active {
+    background: #374151;
+    color: white;
+    border-left-color: #3b82f6;
+}
+
+.admin-sidebar .nav-icon {
+    margin-right: 0.75rem;
+    font-size: 1.25rem;
+}
+
+.admin-sidebar .sidebar-footer {
+    margin-top: auto;
+    border-top: 1px solid #374151;
+}
+
+.admin-content {
+    flex: 1;
+    background: #f9fafb;
+    padding: 2rem;
+}
+
+.admin-stats .stat-card {
+    display: flex;
+    align-items: center;
+    padding: 1.5rem;
+}
+
+.admin-stats .stat-icon {
+    font-size: 2rem;
+    margin-right: 1rem;
+}
+
+.admin-stats .stat-breakdown {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin-top: 0.25rem;
+}
+
+.admin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.billing-models-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.billing-model-item {
+    display: flex;
+    justify-content: between;
+    align-items: center;
+    padding: 1.5rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    background: white;
+}
+
+.billing-model-item .model-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.billing-model-item .model-details {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.875rem;
+    color: #6b7280;
+}
+
+.quick-actions-admin {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.5rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.action-btn:hover {
+    border-color: #3b82f6;
+    transform: translateY(-2px);
+}
+
+.action-btn .action-icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.system-status .status-item {
+    display: flex;
+    align-items: center;
+    justify-content: between;
+    padding: 1rem 0;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.system-status .status-item:last-child {
+    border-bottom: none;
+}
+
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 1rem;
+}
+
+.status-indicator.online {
+    background: #10b981;
+}
+
+.status-indicator.warning {
+    background: #f59e0b;
+}
+
+.status-indicator.offline {
+    background: #ef4444;
+}
+
+.status-text {
+    margin-left: auto;
+    font-size: 0.875rem;
+    color: #6b7280;
+}

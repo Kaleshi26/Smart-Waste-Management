@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -60,8 +61,9 @@ public class AuthController {
     @GetMapping("/users/role/{role}")
     public ResponseEntity<?> getUsersByRole(@PathVariable String role) {
         try {
-            com.CSSEProject.SmartWasteManagement.user.entity.UserRole userRole = 
+            com.CSSEProject.SmartWasteManagement.user.entity.UserRole userRole =
                 com.CSSEProject.SmartWasteManagement.user.entity.UserRole.valueOf(role.toUpperCase());
+            List<User> users = userService.getUsersByRole(userRole);
             return ResponseEntity.ok(userService.getUsersByRole(userRole));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid role or " + e.getMessage()));

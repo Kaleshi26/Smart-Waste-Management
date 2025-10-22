@@ -16,7 +16,15 @@ import StaffProfile from './pages/StaffProfile';
 import Layout from './components/Layout';
 import StaffLayout from './components/StaffLayout';
 import Schedules from './pages/Schedules';
+import AdminLayout from './components/AdminLayout';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import BillingManagement from './pages/admin/BillingManagement';
 import './App.css';
+import UserManagement from "./pages/admin/UserManagement.jsx";
+import CollectionReports from "./pages/admin/CollectionReports.jsx";
+import InvoicesPayments from "./pages/admin/InvoicesPayments.jsx";
+import BinMonitoring from "./pages/admin/BinMonitoring.jsx";
+import ScheduleManagement from "./pages/admin/ScheduleManagement.jsx";
 
 function App() {
     const [user, setUser] = useState(null);
@@ -165,9 +173,14 @@ function App() {
 
                     {/* Admin Routes - You can add these later */}
                     {user && user.role === 'ROLE_ADMIN' && (
-                        <Route element={<Layout user={user} onLogout={handleLogout} />}>
-                            <Route path="/dashboard" element={<div>Admin Dashboard - Coming Soon</div>} />
-                            <Route path="/profile" element={<Profile user={user} />} />
+                        <Route element={<AdminLayout user={user} onLogout={handleLogout} />}>                            <Route path="/admin/dashboard" element={<AdminDashboard user={user} />} />
+                            <Route path="/admin/billing" element={<BillingManagement user={user} />} />
+                            <Route path="/admin/users" element={<UserManagement user={user} />} />
+                            <Route path="/admin/collections" element={<CollectionReports user={user} />} />
+                            <Route path="/admin/invoices" element={<InvoicesPayments user={user} />} />
+                            <Route path="/admin/bins" element={<BinMonitoring user={user} />} />
+                            <Route path="/admin/schedules" element={<ScheduleManagement user={user} />} />
+
                         </Route>
                     )}
 
