@@ -51,6 +51,10 @@ const AdminLayout = ({ user, onLogout }) => {
                         <span className="nav-icon">📅</span>
                         Schedules
                     </NavLink>
+                    <NavLink to="/admin/analytics" className="nav-item">
+                        <span className="nav-icon">📊</span>
+                        Analytics Dashboard
+                    </NavLink>
                     <NavLink to="/admin/staff" className="nav-item">
                         <span className="nav-icon">👷</span>
                         Staff Performance

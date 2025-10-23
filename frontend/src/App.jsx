@@ -19,6 +19,7 @@ import Schedules from './pages/Schedules';
 import AdminLayout from './components/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import BillingManagement from './pages/admin/BillingManagement';
+import AdminAnalyticsDashboard from './pages/admin/AdminAnalyticsDashboard';
 import './App.css';
 import UserManagement from "./pages/admin/UserManagement.jsx";
 import CollectionReports from "./pages/admin/CollectionReports.jsx";
@@ -180,6 +181,7 @@ function App() {
                             <Route path="/admin/invoices" element={<InvoicesPayments user={user} />} />
                             <Route path="/admin/bins" element={<BinMonitoring user={user} />} />
                             <Route path="/admin/schedules" element={<ScheduleManagement user={user} />} />
+                            <Route path="/admin/analytics" element={<AdminAnalyticsDashboard user={user} />} />
 
                         </Route>
                     )}
