@@ -1,8 +1,8 @@
-// File: src/main/java/com/CSSEProject/SmartWasteManagement/user/entity/UserRole.java
 package com.CSSEProject.SmartWasteManagement.user.entity;
 
 public enum UserRole {
-    ROLE_RESIDENT,
-    ROLE_STAFF,
-    ROLE_ADMIN
+    ROLE_RESIDENT,      // Households/Businesses
+    ROLE_STAFF,         // Waste collection staff
+    ROLE_ADMIN,         // System administrators
+    ROLE_CITY_MANAGER   // Can configure billing models per city
 }
