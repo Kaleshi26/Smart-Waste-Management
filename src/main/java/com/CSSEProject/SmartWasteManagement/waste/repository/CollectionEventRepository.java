@@ -26,6 +26,9 @@ public interface CollectionEventRepository extends JpaRepository<CollectionEvent
 
     List<CollectionEvent> findByCollectionTimeBetween(LocalDateTime start, LocalDateTime end);
 
+    // ✅ Add this method (needed for AnalyticsService)
+    long countByCollectionTimeBetween(LocalDateTime start, LocalDateTime end);
+
     @Query("SELECT c FROM CollectionEvent c WHERE c.invoice IS NULL")
     List<CollectionEvent> findUninvoicedCollections();
 
