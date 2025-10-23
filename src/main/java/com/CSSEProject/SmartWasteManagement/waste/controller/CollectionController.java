@@ -16,7 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-
+import com.CSSEProject.SmartWasteManagement.dto.RecyclableItemDto;
 @RestController
 @RequestMapping("/api/waste/collections")
 @CrossOrigin(origins = "http://localhost:5173")
@@ -54,19 +54,35 @@ public class CollectionController {
     @PostMapping("/record")
     public ResponseEntity<?> recordCollection(@RequestBody CollectionRequestDto request) {
         try {
-            // Check if offline mode is requested
-            if (request.isOfflineMode()) {
-                return recordOfflineCollection(request, request.getDeviceId());
+            // Auto-calculate recyclable totals if not provided
+            if (request.hasRecyclables()) {
+                if (request.getTotalRecyclableWeight() == null) {
+                    request.setTotalRecyclableWeight(request.calculateTotalRecyclableWeight());
+                }
             }
 
-            return ResponseEntity.ok(Map.of(
-                    "message", "Collection recorded successfully",
-                    "collection", collectionService.recordCollection(request),
-                    "feedback", Map.of(
-                            "audio", "Collection recorded successfully",
-                            "visual", "✅ Collection recorded for bin " + request.getBinId()
-                    )
+            CollectionEvent collection = collectionService.recordCollection(request);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Collection recorded successfully");
+            response.put("collection", collection);
+
+            // Add recycling summary to response
+            if (request.hasRecyclables()) {
+                response.put("recyclingSummary", Map.of(
+                        "itemsCount", collection.getRecyclableItemsCount(),
+                        "totalWeight", collection.getRecyclableWeight(),
+                        "totalRefund", collection.getRefundAmount()
+                ));
+            }
+
+            response.put("feedback", Map.of(
+                    "audio", "Collection recorded successfully",
+                    "visual", buildVisualFeedback(request, collection)
             ));
+
+            return ResponseEntity.ok(response);
+
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", e.getMessage(),
@@ -78,6 +94,21 @@ public class CollectionController {
         }
     }
 
+    // NEW: Helper method for visual feedback
+    private String buildVisualFeedback(CollectionRequestDto request, CollectionEvent collection) {
+        StringBuilder visual = new StringBuilder();
+        visual.append("✅ Collection recorded for bin ").append(request.getBinId());
+
+        if (request.hasRecyclables()) {
+            visual.append("\n♻️ ")
+                    .append(collection.getRecyclableItemsCount())
+                    .append(" recyclables (Refund: Rs.")
+                    .append(String.format("%.2f", collection.getRefundAmount()))
+                    .append(")");
+        }
+
+        return visual.toString();
+    }
     @PostMapping("/record-offline")
     public ResponseEntity<?> recordOfflineCollection(@RequestBody CollectionRequestDto request,
                                                      @RequestHeader(value = "Device-Id", required = false) String deviceId) {

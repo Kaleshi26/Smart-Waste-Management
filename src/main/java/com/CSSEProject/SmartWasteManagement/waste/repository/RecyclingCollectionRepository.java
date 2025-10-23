@@ -1,3 +1,4 @@
+// File: backend/src/main/java/com/CSSEProject/SmartWasteManagement/waste/repository/RecyclingCollectionRepository.java
 package com.CSSEProject.SmartWasteManagement.waste.repository;
 
 import com.CSSEProject.SmartWasteManagement.waste.entity.RecyclingCollection;
@@ -9,9 +10,11 @@ import java.util.List;
 
 @Repository
 public interface RecyclingCollectionRepository extends JpaRepository<RecyclingCollection, Long> {
-    List<RecyclingCollection> findByInvoiceIsNull();
-    List<RecyclingCollection> findByResidentId(Long residentId);
-    List<RecyclingCollection> findByCollectionTimeBetween(java.time.LocalDateTime start, java.time.LocalDateTime end);
-    @Query("SELECT r FROM RecyclingCollection r WHERE r.resident.id = :residentId AND r.invoice IS NULL")
+
+    // Add this method if missing
+    @Query("SELECT rc FROM RecyclingCollection rc WHERE rc.invoice IS NULL AND rc.resident.id = :residentId")
     List<RecyclingCollection> findUninvoicedByResident(@Param("residentId") Long residentId);
+
+    // Existing method
+    List<RecyclingCollection> findByInvoiceIsNull();
 }

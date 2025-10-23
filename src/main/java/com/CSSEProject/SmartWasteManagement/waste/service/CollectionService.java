@@ -3,7 +3,7 @@ package com.CSSEProject.SmartWasteManagement.waste.service;
 import com.CSSEProject.SmartWasteManagement.dto.CollectionRequestDto;
 import com.CSSEProject.SmartWasteManagement.dto.CollectionResponseDto;
 import com.CSSEProject.SmartWasteManagement.dto.RecyclingRequestDto;
-import com.CSSEProject.SmartWasteManagement.payment.controller.InvoiceController;
+import com.CSSEProject.SmartWasteManagement.dto.RecyclableItemDto;
 import com.CSSEProject.SmartWasteManagement.payment.entity.BillingModel;
 import com.CSSEProject.SmartWasteManagement.payment.entity.Invoice;
 import com.CSSEProject.SmartWasteManagement.payment.entity.InvoiceStatus;
@@ -12,16 +12,8 @@ import com.CSSEProject.SmartWasteManagement.payment.service.BillingService;
 import com.CSSEProject.SmartWasteManagement.payment.service.InvoiceService;
 import com.CSSEProject.SmartWasteManagement.user.entity.User;
 import com.CSSEProject.SmartWasteManagement.user.repository.UserRepository;
-import com.CSSEProject.SmartWasteManagement.waste.entity.CollectionEvent;
-import com.CSSEProject.SmartWasteManagement.waste.entity.CollectionSchedule;
-import com.CSSEProject.SmartWasteManagement.waste.entity.RecyclingCollection;
-import com.CSSEProject.SmartWasteManagement.waste.entity.WasteBin;
-import com.CSSEProject.SmartWasteManagement.waste.entity.BinType;
-import com.CSSEProject.SmartWasteManagement.waste.entity.ScheduleStatus;
-import com.CSSEProject.SmartWasteManagement.waste.repository.CollectionEventRepository;
-import com.CSSEProject.SmartWasteManagement.waste.repository.CollectionScheduleRepository;
-import com.CSSEProject.SmartWasteManagement.waste.repository.RecyclingCollectionRepository;
-import com.CSSEProject.SmartWasteManagement.waste.repository.WasteBinRepository;
+import com.CSSEProject.SmartWasteManagement.waste.entity.*;
+import com.CSSEProject.SmartWasteManagement.waste.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -63,6 +56,13 @@ public class CollectionService {
     @Autowired
     private InvoiceService invoiceService;
 
+    private final Map<QualityGrade, Double> qualityRefundRates = Map.of(
+            QualityGrade.EXCELLENT, 8.0,  // Rs. 8/kg for excellent quality
+            QualityGrade.GOOD, 6.0,       // Rs. 6/kg for good quality
+            QualityGrade.AVERAGE, 4.0,    // Rs. 4/kg for average quality
+            QualityGrade.POOR, 2.0        // Rs. 2/kg for poor quality
+    );
+
     // FIXED: Enhanced method with proper error handling
     public List<CollectionEvent> getCollectionsByCollector(Long collectorId) {
         try {
@@ -85,11 +85,33 @@ public class CollectionService {
         }
     }
 
-    // NEW: Get collections as DTOs directly
+    private String buildCollectionFeedback(CollectionRequestDto request, CollectionEvent collection) {
+        StringBuilder feedback = new StringBuilder();
+        feedback.append("Collection recorded for bin ").append(request.getBinId());
+
+        if (request.hasRecyclables()) {
+            feedback.append(" with ")
+                    .append(collection.getRecyclableItemsCount())
+                    .append(" recyclable items (Refund: Rs.")
+                    .append(String.format("%.2f", collection.getRefundAmount()))
+                    .append(")");
+        }
+
+        return feedback.toString();
+    }
+
+    // ENHANCED: Get collections as DTOs with recycling data
     public List<CollectionResponseDto> getCollectionsByCollectorAsDto(Long collectorId) {
         List<CollectionEvent> collections = getCollectionsByCollector(collectorId);
         return collections.stream()
-                .map(CollectionResponseDto::new)
+                .map(collection -> {
+                    CollectionResponseDto dto = new CollectionResponseDto(collection);
+                    // Populate recycling fields
+                    dto.setRecyclableWeight(collection.getRecyclableWeight());
+                    dto.setRefundAmount(collection.getRefundAmount());
+                    dto.setRecyclableItemsCount(collection.getRecyclableItemsCount());
+                    return dto;
+                })
                 .collect(Collectors.toList());
     }
 
@@ -104,15 +126,20 @@ public class CollectionService {
                 .collect(Collectors.toList());
     }
 
-    private Invoice generateInvoiceAfterCollection(User resident, Double charge, Double weight, BinType binType) {
+    // In CollectionService.java - Fix the invoice generation
+    private Invoice generateInvoiceAfterCollection(User resident, Double charge, Double weight,
+                                                   BinType binType, Double refundAmount, Double recyclableWeight) {
         try {
-            System.out.println("🧾 AUTO-GENERATING INVOICE AFTER COLLECTION");
+            System.out.println("🧾 AUTO-GENERATING INVOICE WITH REFUNDS");
             System.out.println("   - Resident: " + resident.getName());
-            System.out.println("   - Charge: $" + charge);
-            System.out.println("   - Weight: " + weight + " kg");
-            System.out.println("   - Bin Type: " + binType);
+            System.out.println("   - Charge: Rs." + charge);
+            System.out.println("   - Refund: Rs." + refundAmount);
 
-            // Create invoice immediately
+            // Calculate final amount properly
+            Double finalAmount = Math.max(0.0, charge - (refundAmount != null ? refundAmount : 0.0));
+            System.out.println("   - Final: Rs." + finalAmount);
+
+            // Create invoice with refund support
             Invoice invoice = new Invoice();
             invoice.setResident(resident);
             invoice.setInvoiceNumber("INV-AUTO-" + System.currentTimeMillis());
@@ -122,21 +149,41 @@ public class CollectionService {
             invoice.setPeriodEnd(LocalDate.now());
             invoice.setBaseCharge(0.0);
             invoice.setWeightBasedCharge(charge);
-            invoice.setRecyclingCredits(0.0);
+            invoice.setRecyclingCredits(refundAmount != null ? refundAmount : 0.0);
+            invoice.setRefundAmount(refundAmount != null ? refundAmount : 0.0);
+            invoice.setRecyclableWeight(recyclableWeight != null ? recyclableWeight : 0.0);
+
+            // FIXED: Set totalAmount to the charge (before refunds)
             invoice.setTotalAmount(charge);
+
+            // FIXED: Set finalAmount to charge - refund
+            invoice.setFinalAmount(finalAmount);
+
             invoice.setStatus(InvoiceStatus.PENDING);
+
+            // Manually trigger calculation to ensure it's correct
+            invoice.calculateFinalAmount();
 
             Invoice savedInvoice = invoiceRepository.save(invoice);
 
             System.out.println("✅ AUTO-INVOICE GENERATED: " + savedInvoice.getInvoiceNumber());
-            System.out.println("   - Amount: $" + savedInvoice.getTotalAmount());
-            System.out.println("   - Due Date: " + savedInvoice.getDueDate());
+            System.out.println("   - Total Amount: Rs." + savedInvoice.getTotalAmount());
+            System.out.println("   - Refund Applied: Rs." + savedInvoice.getRefundAmount());
+            System.out.println("   - Final Amount: Rs." + savedInvoice.getFinalAmount());
 
             return savedInvoice;
 
         } catch (Exception e) {
             System.err.println("❌ AUTO-INVOICE FAILED: " + e.getMessage());
             return null;
+        }
+    }
+
+    // NEW: Link recycling collections to invoice
+    private void linkRecyclingToInvoice(List<RecyclingCollection> recyclingCollections, Invoice invoice) {
+        for (RecyclingCollection recycling : recyclingCollections) {
+            recycling.setInvoice(invoice);
+            recyclingCollectionRepository.save(recycling);
         }
     }
 
@@ -162,7 +209,6 @@ public class CollectionService {
             throw new RuntimeException("No collection scheduled for bin: " + request.getBinId() + " on " + collectionTime.toLocalDate());
         }
 
-
         // 4. Get billing model and calculate charges
         BillingModel billingModel = billingService.getActiveBillingModelForResident(resident.getId());
         Double charge = calculateCollectionCharge(billingModel, request.getWeight(), bin.getBinType());
@@ -175,67 +221,129 @@ public class CollectionService {
         collection.setWasteBin(bin);
         collection.setCollector(userRepository.findById(request.getCollectorId()).orElse(null));
 
+        // 6. ✅ PROCESS RECYCLABLES IF ANY
+        if (request.hasRecyclables()) {
+            processRecyclables(collection, request.getRecyclables(), resident);
+
+            // Update request with calculated values for response
+            request.setTotalRecyclableWeight(collection.getRecyclableWeight());
+            request.setTotalRefundAmount(collection.getRefundAmount());
+        }
+
         CollectionEvent savedCollection = collectionRepository.save(collection);
 
-        // 6. Update collection schedule status
+        // 7. Update collection schedule status
         updateCollectionScheduleStatus(bin.getBinId(), collectionTime.toLocalDate());
 
-        // 7. ✅ AUTO-GENERATE INVOICE IMMEDIATELY AFTER COLLECTION
-        Invoice autoInvoice = generateInvoiceAfterCollection(resident, charge, request.getWeight(), bin.getBinType());
+        // 8. ✅ AUTO-GENERATE INVOICE IMMEDIATELY AFTER COLLECTION (with refunds)
+        Invoice autoInvoice = generateInvoiceAfterCollection(
+                resident, charge, request.getWeight(),
+                bin.getBinType(), collection.getRefundAmount(), collection.getRecyclableWeight()
+        );
 
         // Link this collection to the auto-generated invoice
         savedCollection.setInvoice(autoInvoice);
+
+        // Also link recycling collections to invoice
+        if (request.hasRecyclables()) {
+            linkRecyclingToInvoice(savedCollection.getRecyclingCollections(), autoInvoice);
+        }
+
         collectionRepository.save(savedCollection);
 
-        // 8. Update bin level (reset to 0 after collection)
+        // 9. Update bin level (reset to 0 after collection)
         updateBinLevelAfterCollection(bin);
 
-        // 9. Provide feedback
-        feedbackService.provideSuccessFeedback("Collection recorded successfully for bin " + request.getBinId());
+        // 10. Update resident recycling credits
+        if (request.hasRecyclables()) {
+            updateResidentRecyclingCredits(resident, collection.getRefundAmount());
+        }
+
+        // 11. Provide feedback
+        String feedbackMessage = buildCollectionFeedback(request, collection);
+        feedbackService.provideSuccessFeedback(feedbackMessage);
         feedbackService.provideAudioConfirmation("Collection recorded successfully");
 
         return savedCollection;
     }
 
-    // Alternative method if you need to lookup by RFID tag
-    public CollectionEvent recordCollectionByRfid(CollectionRequestDto request) {
-        // Lookup bin by RFID tag instead of binId
-        WasteBin bin = wasteBinRepository.findByRfidTag(request.getRfidTag())
-                .orElseThrow(() -> {
-                    feedbackService.provideErrorFeedback("Bin not found with RFID: " + request.getRfidTag());
-                    return new RuntimeException("Bin not found with RFID: " + request.getRfidTag());
-                });
+    private void processRecyclables(CollectionEvent collection, List<RecyclableItemDto> recyclables, User resident) {
+        for (RecyclableItemDto recyclable : recyclables) {
+            // Validate recyclable
+            if (recyclable.getWeightKg() == null || recyclable.getWeightKg() <= 0) {
+                throw new RuntimeException("Invalid weight for recyclable: " + recyclable.getType());
+            }
 
-        // Continue with the same logic as above...
-        return recordCollection(createRequestFromBin(bin, request));
+            if (recyclable.getQuality() == null) {
+                recyclable.setQuality(QualityGrade.AVERAGE); // Default quality
+            }
+
+            // Calculate payback amount based on quality
+            Double paybackAmount = calculateRecyclingPayback(recyclable);
+
+            // Create recycling collection record
+            RecyclingCollection recycling = new RecyclingCollection();
+            recycling.setCollectionTime(collection.getCollectionTime());
+            recycling.setRecyclableType(recyclable.getType());
+            recycling.setWeight(recyclable.getWeightKg());
+            recycling.setPaybackAmount(paybackAmount);
+            recycling.setQuality(recyclable.getQuality());
+            recycling.setNotes(recyclable.getNotes());
+            recycling.setResident(resident);
+            recycling.setCollectionEvent(collection);
+
+            // Add to collection
+            collection.addRecyclingCollection(recycling);
+        }
     }
 
-    private CollectionRequestDto createRequestFromBin(WasteBin bin, CollectionRequestDto originalRequest) {
-        CollectionRequestDto newRequest = new CollectionRequestDto();
-        newRequest.setBinId(bin.getBinId());
-        newRequest.setCollectorId(originalRequest.getCollectorId());
-        newRequest.setWeight(originalRequest.getWeight());
-        newRequest.setTruckId(originalRequest.getTruckId());
-        newRequest.setOfflineMode(originalRequest.isOfflineMode());
-        newRequest.setDeviceId(originalRequest.getDeviceId());
-        return newRequest;
+    // NEW: Calculate recycling payback based on quality
+    private Double calculateRecyclingPayback(RecyclableItemDto recyclable) {
+        Double baseRate = qualityRefundRates.get(recyclable.getQuality());
+        if (baseRate == null) {
+            baseRate = 4.0; // Default rate
+        }
+
+        // Apply material-specific multipliers if needed
+        Double materialMultiplier = getMaterialMultiplier(recyclable.getType());
+
+        return recyclable.getWeightKg() * baseRate * materialMultiplier;
     }
 
+    // NEW: Material-specific multipliers (can be configurable)
+    private Double getMaterialMultiplier(RecyclableType type) {
+        switch (type) {
+            case METAL: return 1.2;      // Metal is more valuable
+            case ELECTRONICS: return 1.5; // Electronics are most valuable
+            case PAPER: return 0.8;      // Paper is less valuable
+            default: return 1.0;         // Plastic, Glass standard value
+        }
+    }
+
+    // FIXED: Updated recordRecyclingCollection method with correct parameters
     public CollectionEvent recordRecyclingCollection(RecyclingRequestDto request) {
         // Implementation for recycling collections
         User resident = userRepository.findById(request.getResidentId())
                 .orElseThrow(() -> new RuntimeException("Resident not found"));
 
-        // Calculate recycling payback
-        BillingModel billingModel = billingService.getActiveBillingModelForResident(resident.getId());
-        Double paybackAmount = calculateRecyclingPayback(billingModel, request.getWeight(), request.getWasteType());
+        // Use default quality if not provided
+        QualityGrade quality = request.getQuality() != null ? request.getQuality() : QualityGrade.AVERAGE;
+
+        // FIXED: Use the new method signature with RecyclableType and QualityGrade
+        Double paybackAmount = calculateRecyclingPaybackWithQuality(
+                request.getWeight(),
+                request.getRecyclableType(),
+                quality
+        );
 
         // Create recycling collection record
         RecyclingCollection recycling = new RecyclingCollection();
         recycling.setCollectionTime(LocalDateTime.now());
-        recycling.setWasteType(request.getWasteType());
+        recycling.setRecyclableType(request.getRecyclableType());
         recycling.setWeight(request.getWeight());
         recycling.setPaybackAmount(paybackAmount);
+        recycling.setQuality(quality);
+
         recycling.setResident(resident);
 
         RecyclingCollection savedRecycling = recyclingCollectionRepository.save(recycling);
@@ -244,6 +352,19 @@ public class CollectionService {
         updateResidentRecyclingCredits(resident, paybackAmount);
 
         return null; // Return appropriate response
+    }
+
+    // NEW: Helper method for recycling payback with quality
+    private Double calculateRecyclingPaybackWithQuality(Double weight, RecyclableType recyclableType, QualityGrade quality) {
+        Double baseRate = qualityRefundRates.get(quality);
+        if (baseRate == null) {
+            baseRate = 4.0; // Default rate
+        }
+
+        // Apply material-specific multipliers
+        Double materialMultiplier = getMaterialMultiplier(recyclableType);
+
+        return weight * baseRate * materialMultiplier;
     }
 
     private Double calculateCollectionCharge(BillingModel model, Double weight, BinType binType) {
@@ -265,15 +386,12 @@ public class CollectionService {
         }
     }
 
+    // REMOVED: The problematic method that was causing compilation errors
+    /*
     private Double calculateRecyclingPayback(BillingModel model, Double weight, BinType wasteType) {
-        if (model == null || model.getRecyclingPaybackRates() == null) {
-            return 0.0;
-        }
-        Double rate = model.getRecyclingPaybackRates().get(wasteType);
-        return rate != null ? weight * rate : 0.0;
+        // This method is removed as it's no longer compatible with our new system
     }
-
-
+    */
 
     private boolean isCollectionScheduledForToday(String binId, LocalDate today) {
         Optional<CollectionSchedule> schedule = collectionScheduleRepository

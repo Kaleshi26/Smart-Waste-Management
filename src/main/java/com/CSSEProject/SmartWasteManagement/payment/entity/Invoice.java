@@ -1,3 +1,4 @@
+// File: backend/src/main/java/com/CSSEProject/SmartWasteManagement/payment/entity/Invoice.java
 package com.CSSEProject.SmartWasteManagement.payment.entity;
 
 import com.CSSEProject.SmartWasteManagement.user.entity.User;
@@ -49,14 +50,24 @@ public class Invoice {
     @Column(nullable = false)
     private Double recyclingCredits = 0.0;
 
+    // Refund fields for recycling
+    @Column(nullable = false)
+    private Double refundAmount = 0.0;
+
+    @Column(nullable = false)
+    private Double recyclableWeight = 0.0;
+
     @Column(nullable = false)
     private Double totalAmount = 0.0;
+
+    // Final amount after refunds
+    @Column(nullable = false)
+    private Double finalAmount = 0.0;
 
     // Relationships
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "resident_id", nullable = false)
-    @JsonIgnore // Add this to break the cycle
-
+    @JsonIgnore
     private User resident;
 
     @OneToMany(mappedBy = "invoice", fetch = FetchType.LAZY)
@@ -69,6 +80,37 @@ public class Invoice {
 
     public Invoice() {
         this.invoiceDate = LocalDate.now();
-        this.dueDate = LocalDate.now().plusDays(30); // 30 days from invoice date
+        this.dueDate = LocalDate.now().plusDays(30);
+    }
+
+    // FIXED: Better calculation logic
+    @PrePersist
+    @PreUpdate
+    public void calculateFinalAmount() {
+        // If totalAmount is not set, calculate it from components
+        if (this.totalAmount == null || this.totalAmount == 0.0) {
+            this.totalAmount = (this.baseCharge != null ? this.baseCharge : 0.0)
+                    + (this.weightBasedCharge != null ? this.weightBasedCharge : 0.0);
+        }
+
+        // Calculate final amount (never negative)
+        double total = this.totalAmount != null ? this.totalAmount : 0.0;
+        double refund = this.refundAmount != null ? this.refundAmount : 0.0;
+        this.finalAmount = Math.max(0.0, total - refund);
+
+        System.out.println("🧮 Invoice Final Calculation:");
+        System.out.println("   - Base: " + this.baseCharge);
+        System.out.println("   - Weight Based: " + this.weightBasedCharge);
+        System.out.println("   - Total: " + this.totalAmount);
+        System.out.println("   - Refund: " + this.refundAmount);
+        System.out.println("   - Final: " + this.finalAmount);
+    }
+
+    // Helper method to manually set amounts with validation
+    public void setAmounts(Double totalCharge, Double refund) {
+        this.totalAmount = totalCharge != null ? totalCharge : 0.0;
+        this.refundAmount = refund != null ? refund : 0.0;
+        this.finalAmount = Math.max(0.0, this.totalAmount - this.refundAmount);
+        this.recyclingCredits = this.refundAmount; // Sync recycling credits with refund
     }
 }

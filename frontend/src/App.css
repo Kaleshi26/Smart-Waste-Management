@@ -1666,3 +1666,312 @@ a:focus-visible {
     font-size: 0.875rem;
     color: #6b7280;
 }
+
+
+/* Recycling Section Styles */
+.recycling-toggle {
+    margin: 15px 0;
+    text-align: center;
+}
+
+.recyclables-section {
+    background: #f8fff8;
+    border: 1px solid #d4edda;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 15px 0;
+}
+
+.recyclables-section h5 {
+    color: #28a745;
+    margin-bottom: 10px;
+}
+
+.section-description {
+    color: #6c757d;
+    font-size: 0.9em;
+    margin-bottom: 15px;
+}
+
+.recyclable-item {
+    background: white;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+.recyclable-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.recyclable-header h6 {
+    margin: 0;
+    color: #495057;
+}
+
+.recyclable-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.recyclable-form .form-group {
+    margin-bottom: 0;
+}
+
+/* Billing Preview Updates */
+.charge-subitem {
+    font-size: 0.9em;
+    padding-left: 20px;
+    color: #28a745;
+}
+
+/* Invoice Details Styles */
+.recycling-credits-cell {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.recycling-credits-cell .btn-link {
+    padding: 2px 5px;
+    font-size: 0.8em;
+}
+
+.invoice-details-grid {
+    display: grid;
+    gap: 20px;
+}
+
+.detail-section {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 6px;
+}
+
+.detail-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.detail-item:last-child {
+    border-bottom: none;
+}
+
+.charge-breakdown {
+    space-y: 10px;
+}
+
+.charge-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+}
+
+.charge-item.total {
+    border-top: 2px solid #dee2e6;
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+/* Recycling Impact Styles */
+.recycling-impact {
+    display: grid;
+    gap: 15px;
+}
+
+.impact-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px;
+    background: white;
+    border-radius: 8px;
+    border-left: 4px solid #28a745;
+}
+
+.impact-icon {
+    font-size: 1.5em;
+}
+
+.impact-content strong {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.impact-content p {
+    margin: 0;
+    color: #6c757d;
+    font-size: 0.9em;
+}
+
+/* Modal Sizes */
+.modal-lg {
+    max-width: 700px;
+}
+
+/* Text Colors */
+.text-success {
+    color: #28a745 !important;
+}
+
+.text-danger {
+    color: #dc3545 !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .recyclable-form {
+        grid-template-columns: 1fr;
+    }
+
+    .invoice-details-grid {
+        gap: 15px;
+    }
+
+    .impact-item {
+        flex-direction: column;
+        text-align: center;
+    }
+}
+/* Recycling Rates Info */
+.recycling-rates-info {
+    background: #e8f5e8;
+    border: 1px solid #c8e6c9;
+    border-radius: 6px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.recycling-rates-info h6 {
+    margin: 0 0 10px 0;
+    color: #2e7d32;
+    font-size: 0.9em;
+}
+
+.rates-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+}
+
+.rate-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    font-size: 0.85em;
+}
+
+.material-type {
+    color: #555;
+}
+
+.rate-amount {
+    color: #2e7d32;
+    font-weight: bold;
+}
+
+/* Recycling Refund Preview */
+.recycling-refund-preview {
+    background: #f1f8e9;
+    border: 1px solid #c5e1a5;
+    border-radius: 4px;
+    padding: 10px;
+    margin-top: 10px;
+    grid-column: 1 / -1;
+}
+
+.refund-amount {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Charge Breakdown Improvements */
+.charge-section-divider {
+    border-top: 1px dashed #dee2e6;
+    margin: 10px 0;
+}
+
+.charge-item.total {
+    border-top: 2px solid #007bff;
+    padding-top: 12px;
+    margin-top: 8px;
+    font-size: 1.1em;
+}
+
+/* Savings Summary */
+.savings-summary {
+    background: #f8f9fa;
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 10px;
+    border-left: 4px solid #28a745;
+}
+
+.savings-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 0.9em;
+}
+
+/* Form Improvements */
+.recyclable-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    position: relative;
+}
+
+/* Ensure proper number input handling */
+input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .recyclable-form {
+        grid-template-columns: 1fr;
+    }
+
+    .rates-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .recycling-refund-preview {
+        grid-column: 1;
+    }
+}
+
+/* Text colors for better visibility */
+.text-success {
+    color: #28a745 !important;
+    font-weight: 600;
+}
+
+.text-muted {
+    color: #6c757d !important;
+}
+
+/* Button improvements */
+.btn-success {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    border: none;
+}
+
+.btn-success:hover {
+    background: linear-gradient(135deg, #218838, #1e9e8a);
+}

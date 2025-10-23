@@ -1,4 +1,3 @@
-// File: frontend/src/pages/Invoices.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -10,6 +9,9 @@ const Invoices = ({ user }) => {
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState('CREDIT_CARD');
     const [processingPayment, setProcessingPayment] = useState(false);
+    // NEW: State for invoice details modal
+    const [showDetailsModal, setShowDetailsModal] = useState(false);
+    const [detailedInvoice, setDetailedInvoice] = useState(null);
 
     useEffect(() => {
         fetchInvoices();
@@ -21,7 +23,6 @@ const Invoices = ({ user }) => {
             const response = await axios.get(`http://localhost:8082/api/invoices/resident/${user.id}`);
             console.log('✅ Raw API response:', response.data);
 
-            // Check if response is array or object
             if (Array.isArray(response.data)) {
                 console.log(`📋 Found ${response.data.length} invoices`);
                 setInvoices(response.data);
@@ -40,14 +41,21 @@ const Invoices = ({ user }) => {
             setLoading(false);
         }
     };
+
     const handleGenerateInvoice = async () => {
         try {
             await axios.post(`http://localhost:8082/api/invoices/generate/${user.id}`);
             toast.success('Monthly invoice generated successfully!');
-            fetchInvoices(); // Refresh the list
+            fetchInvoices();
         } catch (error) {
             toast.error(error.response?.data?.error || 'Failed to generate invoice');
         }
+    };
+
+    // NEW: View invoice details
+    const handleViewDetails = (invoice) => {
+        setDetailedInvoice(invoice);
+        setShowDetailsModal(true);
     };
 
     const handlePayInvoice = (invoice) => {
@@ -69,7 +77,7 @@ const Invoices = ({ user }) => {
             toast.success('Payment processed successfully!');
             setShowPaymentModal(false);
             setSelectedInvoice(null);
-            fetchInvoices(); // Refresh the list
+            fetchInvoices();
         } catch (error) {
             toast.error(error.response?.data?.error || 'Payment failed. Please try again.');
         } finally {
@@ -94,6 +102,11 @@ const Invoices = ({ user }) => {
         return invoices
             .filter(inv => inv.status === 'PENDING')
             .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
+    };
+
+    // NEW: Calculate total recycling savings
+    const calculateTotalRecyclingSavings = () => {
+        return invoices.reduce((sum, inv) => sum + (inv.recyclingCredits || 0), 0);
     };
 
     if (loading) {
@@ -144,12 +157,11 @@ const Invoices = ({ user }) => {
                     <div className="stat-change">Outstanding balance</div>
                 </div>
 
+                {/* NEW: Recycling Savings Card */}
                 <div className="stat-card success">
-                    <div className="stat-title">Paid Invoices</div>
-                    <div className="stat-value">
-                        {invoices.filter(inv => inv.status === 'PAID').length}
-                    </div>
-                    <div className="stat-change">Successfully paid</div>
+                    <div className="stat-title">Recycling Savings</div>
+                    <div className="stat-value">${calculateTotalRecyclingSavings().toFixed(2)}</div>
+                    <div className="stat-change">Total refunds earned</div>
                 </div>
             </div>
 
@@ -193,24 +205,46 @@ const Invoices = ({ user }) => {
                                     </td>
                                     <td>${(invoice.baseCharge || 0).toFixed(2)}</td>
                                     <td>${(invoice.weightBasedCharge || 0).toFixed(2)}</td>
-                                    <td className="text-success">-${(invoice.recyclingCredits || 0).toFixed(2)}</td>
+                                    <td className="text-success">
+                                        {/* NEW: Enhanced recycling credits display */}
+                                        <div className="recycling-credits-cell">
+                                            <strong>-${(invoice.recyclingCredits || 0).toFixed(2)}</strong>
+                                            {invoice.recyclingCredits > 0 && (
+                                                <button
+                                                    className="btn btn-sm btn-link"
+                                                    onClick={() => handleViewDetails(invoice)}
+                                                    title="View recycling details"
+                                                >
+                                                    📋
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
                                     <td>
                                         <strong>${(invoice.totalAmount || 0).toFixed(2)}</strong>
                                     </td>
                                     <td>{getStatusBadge(invoice.status)}</td>
                                     <td>
-                                        {invoice.status === 'PENDING' && invoice.totalAmount > 0 ? (
+                                        <div className="action-buttons">
+                                            {invoice.status === 'PENDING' && invoice.totalAmount > 0 ? (
+                                                <button
+                                                    onClick={() => handlePayInvoice(invoice)}
+                                                    className="btn btn-sm btn-primary"
+                                                >
+                                                    Pay Now
+                                                </button>
+                                            ) : invoice.status === 'PAID' ? (
+                                                <span className="text-success">Paid</span>
+                                            ) : (
+                                                <span className="text-muted">No action</span>
+                                            )}
                                             <button
-                                                onClick={() => handlePayInvoice(invoice)}
-                                                className="btn btn-sm btn-primary"
+                                                onClick={() => handleViewDetails(invoice)}
+                                                className="btn btn-sm btn-secondary"
                                             >
-                                                Pay Now
+                                                Details
                                             </button>
-                                        ) : invoice.status === 'PAID' ? (
-                                            <span className="text-success">Paid</span>
-                                        ) : (
-                                            <span className="text-muted">No action</span>
-                                        )}
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -228,7 +262,151 @@ const Invoices = ({ user }) => {
                 )}
             </div>
 
-            {/* Payment Modal */}
+            {/* NEW: Invoice Details Modal */}
+            {showDetailsModal && detailedInvoice && (
+                <div className="modal-overlay">
+                    <div className="modal modal-lg">
+                        <div className="modal-header">
+                            <h3>Invoice Details - {detailedInvoice.invoiceNumber}</h3>
+                            <button
+                                onClick={() => setShowDetailsModal(false)}
+                                className="btn btn-sm btn-secondary"
+                            >
+                                Close
+                            </button>
+                        </div>
+
+                        <div className="modal-body">
+                            <div className="invoice-details-grid">
+                                <div className="detail-section">
+                                    <h4>Basic Information</h4>
+                                    <div className="detail-item">
+                                        <span>Invoice Number:</span>
+                                        <span>{detailedInvoice.invoiceNumber}</span>
+                                    </div>
+                                    <div className="detail-item">
+                                        <span>Issue Date:</span>
+                                        <span>{detailedInvoice.invoiceDate}</span>
+                                    </div>
+                                    <div className="detail-item">
+                                        <span>Due Date:</span>
+                                        <span>{detailedInvoice.dueDate}</span>
+                                    </div>
+                                    <div className="detail-item">
+                                        <span>Billing Period:</span>
+                                        <span>{detailedInvoice.periodStart} to {detailedInvoice.periodEnd}</span>
+                                    </div>
+                                    <div className="detail-item">
+                                        <span>Status:</span>
+                                        <span>{getStatusBadge(detailedInvoice.status)}</span>
+                                    </div>
+                                </div>
+
+                                <div className="detail-section">
+                                    <h4>Charges Breakdown</h4>
+                                    <div className="charge-breakdown">
+                                        <div className="charge-item">
+                                            <span>Base Service Charge:</span>
+                                            <span>${(detailedInvoice.baseCharge || 0).toFixed(2)}</span>
+                                        </div>
+                                        <div className="charge-item">
+                                            <span>Weight-Based Charge:</span>
+                                            <span>${(detailedInvoice.weightBasedCharge || 0).toFixed(2)}</span>
+                                        </div>
+                                        <div className="charge-item">
+                                            <span>Other Charges:</span>
+                                            <span>${(detailedInvoice.otherCharges || 0).toFixed(2)}</span>
+                                        </div>
+
+                                        {/* NEW: Enhanced Recycling Credits Display */}
+                                        <div className="charge-item text-success">
+                                            <span>
+                                                <strong>Recycling Credits:</strong>
+                                                {detailedInvoice.recyclingCredits > 0 && (
+                                                    <small className="ml-1">(Thank you for recycling! ♻️)</small>
+                                                )}
+                                            </span>
+                                            <span><strong>-${(detailedInvoice.recyclingCredits || 0).toFixed(2)}</strong></span>
+                                        </div>
+
+                                        <div className="charge-item total">
+                                            <span><strong>Total Amount:</strong></span>
+                                            <span><strong>${(detailedInvoice.totalAmount || 0).toFixed(2)}</strong></span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* NEW: Recycling Impact Section */}
+                                {detailedInvoice.recyclingCredits > 0 && (
+                                    <div className="detail-section">
+                                        <h4>♻️ Your Recycling Impact</h4>
+                                        <div className="recycling-impact">
+                                            <div className="impact-item">
+                                                <div className="impact-icon">💰</div>
+                                                <div className="impact-content">
+                                                    <strong>Money Saved</strong>
+                                                    <p>You saved ${(detailedInvoice.recyclingCredits || 0).toFixed(2)} through recycling</p>
+                                                </div>
+                                            </div>
+                                            <div className="impact-item">
+                                                <div className="impact-icon">🌱</div>
+                                                <div className="impact-content">
+                                                    <strong>Environmental Impact</strong>
+                                                    <p>Your recycling helps reduce landfill waste and conserve resources</p>
+                                                </div>
+                                            </div>
+                                            <div className="impact-item">
+                                                <div className="impact-icon">📊</div>
+                                                <div className="impact-content">
+                                                    <strong>Community Contribution</strong>
+                                                    <p>You're supporting sustainable waste management practices</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Payment Information */}
+                                {detailedInvoice.status === 'PAID' && (
+                                    <div className="detail-section">
+                                        <h4>Payment Information</h4>
+                                        <div className="detail-item">
+                                            <span>Payment Date:</span>
+                                            <span>{detailedInvoice.paymentDate || 'N/A'}</span>
+                                        </div>
+                                        <div className="detail-item">
+                                            <span>Payment Method:</span>
+                                            <span>{detailedInvoice.paymentMethod || 'N/A'}</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="modal-actions">
+                            {detailedInvoice.status === 'PENDING' && (
+                                <button
+                                    onClick={() => {
+                                        setShowDetailsModal(false);
+                                        handlePayInvoice(detailedInvoice);
+                                    }}
+                                    className="btn btn-primary"
+                                >
+                                    Pay Invoice
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setShowDetailsModal(false)}
+                                className="btn btn-secondary"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Payment Modal (Existing - No changes needed) */}
             {showPaymentModal && selectedInvoice && (
                 <div className="modal-overlay">
                     <div className="modal">
@@ -251,6 +429,12 @@ const Invoices = ({ user }) => {
                                         <span>Invoice Amount:</span>
                                         <span>${(selectedInvoice.totalAmount || 0).toFixed(2)}</span>
                                     </div>
+                                    {selectedInvoice.recyclingCredits > 0 && (
+                                        <div className="payment-item text-success">
+                                            <span>Recycling Credits Applied:</span>
+                                            <span>-${(selectedInvoice.recyclingCredits || 0).toFixed(2)}</span>
+                                        </div>
+                                    )}
                                     <div className="payment-item">
                                         <span>Due Date:</span>
                                         <span>{selectedInvoice.dueDate}</span>

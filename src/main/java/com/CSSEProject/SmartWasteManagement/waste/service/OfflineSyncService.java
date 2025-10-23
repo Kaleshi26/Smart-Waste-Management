@@ -34,7 +34,6 @@ public class OfflineSyncService {
                 request.setBinId(offlineCollection.getBinId());
                 request.setCollectorId(offlineCollection.getCollectorId());
                 request.setWeight(offlineCollection.getWeight());
-                request.setCollectionTime(offlineCollection.getCollectionTime());
                 request.setRfidTag(offlineCollection.getRfidTag());
                 
                 collectionService.recordCollection(request);
@@ -63,9 +62,7 @@ public class OfflineSyncService {
         offlineCollection.setWeight(request.getWeight());
         offlineCollection.setRfidTag(request.getRfidTag());
         offlineCollection.setDeviceId(deviceId);
-        offlineCollection.setCollectionTime(request.getCollectionTime() != null ? 
-            request.getCollectionTime() : LocalDateTime.now());
-        
+
         // Store complete collection data as JSON for backup
         offlineCollection.setCollectionData(createCollectionDataJson(request));
         

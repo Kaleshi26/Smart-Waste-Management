@@ -1,4 +1,3 @@
-// File: frontend/src/pages/StaffScan.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -18,6 +17,10 @@ const StaffScan = ({ user }) => {
     const [billingInfo, setBillingInfo] = useState(null);
     const [showInvoicePreview, setShowInvoicePreview] = useState(false);
 
+    // Recycling state
+    const [recyclables, setRecyclables] = useState([]);
+    const [showRecyclingSection, setShowRecyclingSection] = useState(false);
+
     // Check today's schedule when bin is found
     useEffect(() => {
         if (currentBin) {
@@ -35,27 +38,61 @@ const StaffScan = ({ user }) => {
         }
     };
 
-    const calculateCharges = (weight, binType) => {
-        // Base rates - in real app, this would come from backend billing model
+    // FIXED: Calculate charges with proper recycling refunds
+    const calculateCharges = (weight, binType, recyclables = []) => {
+        // Parse weight safely
+        const parsedWeight = parseFloat(weight) || 0;
+
+        // Base rates for waste collection
         const rates = {
-            'GENERAL_WASTE': 0.5, // $0.5 per kg
+            'GENERAL_WASTE': 0.5,
             'RECYCLABLE_PLASTIC': 0.3,
             'RECYCLABLE_PAPER': 0.2,
             'E_WASTE': 1.0
         };
 
+        // Recycling refund rates per kg (what resident gets back)
+        const recyclingRefundRates = {
+            'PLASTIC': 0.8,
+            'METAL': 1.2,
+            'PAPER': 0.4,
+            'GLASS': 0.3,
+            'ELECTRONICS': 2.5
+        };
+
         const baseRate = rates[binType] || 0.5;
-        const weightCharge = weight * baseRate;
-        const serviceFee = 2.0; // Fixed service fee
-        const totalCharge = weightCharge + serviceFee;
+        const weightCharge = parsedWeight * baseRate;
+        const serviceFee = 2.0;
+
+        // Calculate recycling refunds - only for items with positive weight
+        let totalRecyclingRefund = 0;
+        const recyclingDetails = recyclables
+            .filter(item => item.weightKg > 0)
+            .map(item => {
+                const refundAmount = (item.weightKg || 0) * recyclingRefundRates[item.type];
+                totalRecyclingRefund += refundAmount;
+                return {
+                    type: item.type,
+                    weightKg: item.weightKg || 0,
+                    quality: item.quality || 'GOOD',
+                    notes: item.notes || '',
+                    refundAmount: refundAmount,
+                    ratePerKg: recyclingRefundRates[item.type]
+                };
+            });
+
+        const totalCharge = Math.max(0, weightCharge + serviceFee - totalRecyclingRefund);
 
         return {
             baseRate,
             weightCharge,
             serviceFee,
+            totalRecyclingRefund,
+            recyclingDetails,
             totalCharge,
-            weight,
-            binType
+            weight: parsedWeight,
+            binType,
+            hasRecycling: totalRecyclingRefund > 0
         };
     };
 
@@ -64,6 +101,56 @@ const StaffScan = ({ user }) => {
             ...scanData,
             [e.target.name]: e.target.value
         });
+    };
+
+    // FIXED: Handle recyclable input changes with proper validation
+    const handleRecyclableChange = (index, field, value) => {
+        const updatedRecyclables = [...recyclables];
+
+        // Ensure we have an object at this index
+        if (!updatedRecyclables[index]) {
+            updatedRecyclables[index] = {
+                type: 'PLASTIC',
+                weightKg: 0,
+                quality: 'GOOD',
+                notes: ''
+            };
+        }
+
+        // Update the field
+        updatedRecyclables[index] = {
+            ...updatedRecyclables[index],
+            [field]: field === 'weightKg' ? (parseFloat(value) || 0) : value
+        };
+
+        setRecyclables(updatedRecyclables);
+
+        // Recalculate charges when recyclables change
+        if (scanData.weight && currentBin) {
+            const charges = calculateCharges(scanData.weight, currentBin.binType, updatedRecyclables);
+            setBillingInfo(charges);
+        }
+    };
+
+    // Add new recyclable type
+    const addRecyclable = () => {
+        setRecyclables([...recyclables, {
+            type: 'PLASTIC',
+            weightKg: 0,
+            quality: 'GOOD',
+            notes: ''
+        }]);
+    };
+
+    // Remove recyclable
+    const removeRecyclable = (index) => {
+        const updatedRecyclables = recyclables.filter((_, i) => i !== index);
+        setRecyclables(updatedRecyclables);
+
+        if (scanData.weight && currentBin) {
+            const charges = calculateCharges(scanData.weight, currentBin.binType, updatedRecyclables);
+            setBillingInfo(charges);
+        }
     };
 
     const handleRFIDScan = async () => {
@@ -110,9 +197,8 @@ const StaffScan = ({ user }) => {
 
     const handleWeightChange = (weight) => {
         setScanData({ ...scanData, weight });
-
         if (weight && currentBin) {
-            const charges = calculateCharges(parseFloat(weight), currentBin.binType);
+            const charges = calculateCharges(weight, currentBin.binType, recyclables);
             setBillingInfo(charges);
         }
     };
@@ -138,12 +224,17 @@ const StaffScan = ({ user }) => {
 
         setScanning(true);
         try {
+            // Filter out recyclables with 0 weight
+            const validRecyclables = recyclables.filter(item => item.weightKg > 0);
+
             const collectionData = {
                 binId: currentBin.binId,
                 collectorId: user.id,
                 weight: parseFloat(scanData.weight),
                 truckId: scanData.truckId,
-                notes: scanData.notes
+                notes: scanData.notes,
+                // Include only recyclables with positive weight
+                recyclables: validRecyclables
             };
 
             const response = await axios.post('http://localhost:8082/api/waste/collections/record', collectionData);
@@ -172,8 +263,21 @@ const StaffScan = ({ user }) => {
         setCurrentBin(null);
         setTodaySchedule(null);
         setBillingInfo(null);
+        setRecyclables([]);
+        setShowRecyclingSection(false);
         setShowInvoicePreview(false);
         toast.success('Ready for next collection!');
+    };
+
+    // FIXED: Get recycling rates for display
+    const getRecyclingRatesInfo = () => {
+        return {
+            'PLASTIC': 0.8,
+            'METAL': 1.2,
+            'PAPER': 0.4,
+            'GLASS': 0.3,
+            'ELECTRONICS': 2.5
+        };
     };
 
     return (
@@ -311,7 +415,7 @@ const StaffScan = ({ user }) => {
                             </div>
 
                             <div className="form-group">
-                                <label className="form-label">Weight (kg)</label>
+                                <label className="form-label">Total Waste Weight (kg)</label>
                                 <input
                                     type="number"
                                     name="weight"
@@ -321,13 +425,134 @@ const StaffScan = ({ user }) => {
                                     onChange={(e) => handleWeightChange(e.target.value)}
                                     step="0.1"
                                     min="0"
+                                    required
                                 />
                             </div>
+
+                            {/* Recycling Section Toggle */}
+                            <div className="recycling-toggle">
+                                <button
+                                    type="button"
+                                    className={`btn btn-sm ${showRecyclingSection ? 'btn-success' : 'btn-outline'}`}
+                                    onClick={() => setShowRecyclingSection(!showRecyclingSection)}
+                                >
+                                    ♻️ {showRecyclingSection ? 'Hide' : 'Add'} Recyclables
+                                </button>
+                            </div>
+
+                            {/* Recyclables Input Section */}
+                            {showRecyclingSection && (
+                                <div className="recyclables-section">
+                                    <h5>♻️ Recyclable Materials</h5>
+                                    <p className="section-description">
+                                        Record any recyclable materials found in the waste. This will provide refunds to the resident.
+                                    </p>
+
+                                    {/* NEW: Recycling Rates Info */}
+                                    <div className="recycling-rates-info">
+                                        <h6>💰 Recycling Refund Rates (per kg):</h6>
+                                        <div className="rates-grid">
+                                            {Object.entries(getRecyclingRatesInfo()).map(([type, rate]) => (
+                                                <div key={type} className="rate-item">
+                                                    <span className="material-type">{type}:</span>
+                                                    <span className="rate-amount">${rate.toFixed(2)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {recyclables.map((item, index) => (
+                                        <div key={index} className="recyclable-item">
+                                            <div className="recyclable-header">
+                                                <h6>Recyclable #{index + 1}</h6>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-sm btn-danger"
+                                                    onClick={() => removeRecyclable(index)}
+                                                >
+                                                    Remove
+                                                </button>
+                                            </div>
+                                            <div className="recyclable-form">
+                                                <div className="form-group">
+                                                    <label>Material Type</label>
+                                                    <select
+                                                        value={item.type}
+                                                        onChange={(e) => handleRecyclableChange(index, 'type', e.target.value)}
+                                                        className="form-input"
+                                                    >
+                                                        <option value="PLASTIC">Plastic (${getRecyclingRatesInfo().PLASTIC}/kg)</option>
+                                                        <option value="METAL">Metal (${getRecyclingRatesInfo().METAL}/kg)</option>
+                                                        <option value="PAPER">Paper (${getRecyclingRatesInfo().PAPER}/kg)</option>
+                                                        <option value="GLASS">Glass (${getRecyclingRatesInfo().GLASS}/kg)</option>
+                                                        <option value="ELECTRONICS">Electronics (${getRecyclingRatesInfo().ELECTRONICS}/kg)</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Weight (kg)</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.1"
+                                                        min="0"
+                                                        value={item.weightKg || ''}
+                                                        onChange={(e) => handleRecyclableChange(index, 'weightKg', e.target.value)}
+                                                        className="form-input"
+                                                        placeholder="0.0"
+                                                    />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Quality</label>
+                                                    <select
+                                                        value={item.quality}
+                                                        onChange={(e) => handleRecyclableChange(index, 'quality', e.target.value)}
+                                                        className="form-input"
+                                                    >
+                                                        <option value="EXCELLENT">Excellent</option>
+                                                        <option value="GOOD">Good</option>
+                                                        <option value="AVERAGE">Average</option>
+                                                        <option value="POOR">Poor</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Notes (Optional)</label>
+                                                    <input
+                                                        type="text"
+                                                        value={item.notes}
+                                                        onChange={(e) => handleRecyclableChange(index, 'notes', e.target.value)}
+                                                        className="form-input"
+                                                        placeholder="e.g., Clean bottles, aluminum cans..."
+                                                    />
+                                                </div>
+
+                                                {/* NEW: Real-time recycling refund preview */}
+                                                {item.weightKg > 0 && (
+                                                    <div className="recycling-refund-preview">
+                                                        <div className="refund-amount">
+                                                            <strong>Refund for this item:</strong>
+                                                            <span className="text-success">
+                                                                ${((item.weightKg || 0) * getRecyclingRatesInfo()[item.type]).toFixed(2)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary btn-sm"
+                                        onClick={addRecyclable}
+                                    >
+                                        + Add Another Recyclable
+                                    </button>
+                                </div>
+                            )}
 
                             {/* Billing Preview */}
                             {billingInfo && (
                                 <div className="billing-preview">
-                                    <h5>Charge Calculation</h5>
+                                    <h5>💰 Charge Calculation</h5>
                                     <div className="charge-breakdown">
                                         <div className="charge-item">
                                             <span>Weight ({billingInfo.weight} kg × ${billingInfo.baseRate}/kg):</span>
@@ -337,10 +562,45 @@ const StaffScan = ({ user }) => {
                                             <span>Service Fee:</span>
                                             <span>${billingInfo.serviceFee.toFixed(2)}</span>
                                         </div>
+
+                                        {/* Recycling Refunds */}
+                                        {billingInfo.hasRecycling && (
+                                            <>
+                                                <div className="charge-section-divider"></div>
+                                                <div className="charge-item text-success">
+                                                    <span>
+                                                        <strong>♻️ Recycling Refunds:</strong>
+                                                    </span>
+                                                    <span><strong>-${billingInfo.totalRecyclingRefund.toFixed(2)}</strong></span>
+                                                </div>
+                                                {billingInfo.recyclingDetails.map((item, index) => (
+                                                    <div key={index} className="charge-subitem text-success">
+                                                        <span>  └ {item.type}: {item.weightKg}kg × ${item.ratePerKg}/kg</span>
+                                                        <span>-${item.refundAmount.toFixed(2)}</span>
+                                                    </div>
+                                                ))}
+                                            </>
+                                        )}
+
+                                        <div className="charge-section-divider"></div>
                                         <div className="charge-item total">
-                                            <span>Total Charge:</span>
-                                            <span>${billingInfo.totalCharge.toFixed(2)}</span>
+                                            <span><strong>Final Charge:</strong></span>
+                                            <span><strong>${billingInfo.totalCharge.toFixed(2)}</strong></span>
                                         </div>
+
+                                        {/* NEW: Savings Summary */}
+                                        {billingInfo.hasRecycling && (
+                                            <div className="savings-summary">
+                                                <div className="savings-item">
+                                                    <span>Resident Saves:</span>
+                                                    <span className="text-success">${billingInfo.totalRecyclingRefund.toFixed(2)}</span>
+                                                </div>
+                                                <div className="savings-item">
+                                                    <span>Original Amount:</span>
+                                                    <span className="text-muted">${(billingInfo.weightCharge + billingInfo.serviceFee).toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -397,13 +657,26 @@ const StaffScan = ({ user }) => {
                                             <span>Waste Type:</span>
                                             <span>{currentBin?.binType?.replace(/_/g, ' ')}</span>
                                         </div>
-                                        <div className="invoice-item">
+
+                                        {/* Recycling Summary in Invoice */}
+                                        {billingInfo.hasRecycling && (
+                                            <>
+                                                <div className="invoice-item text-success">
+                                                    <span>Recycling Refunds:</span>
+                                                    <span>-${billingInfo.totalRecyclingRefund.toFixed(2)}</span>
+                                                </div>
+                                                {billingInfo.recyclingDetails.map((item, index) => (
+                                                    <div key={index} className="invoice-subitem text-success">
+                                                        <span>  └ {item.type}: {item.weightKg}kg</span>
+                                                        <span>-${item.refundAmount.toFixed(2)}</span>
+                                                    </div>
+                                                ))}
+                                            </>
+                                        )}
+
+                                        <div className="invoice-item total">
                                             <span>Total Charge:</span>
                                             <span className="total-amount">${billingInfo.totalCharge.toFixed(2)}</span>
-                                        </div>
-                                        <div className="invoice-item">
-                                            <span>Resident:</span>
-                                            <span>{currentBin?.resident?.name || 'Not assigned'}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -416,6 +689,9 @@ const StaffScan = ({ user }) => {
                                         <li>✅ Invoice generated for resident</li>
                                         <li>✅ Bin level reset to 0%</li>
                                         <li>✅ Collection marked as completed</li>
+                                        {billingInfo.hasRecycling && (
+                                            <li>✅ Recycling refunds applied: <strong>${billingInfo.totalRecyclingRefund.toFixed(2)}</strong></li>
+                                        )}
                                     </ul>
                                 </div>
                             </div>
@@ -441,17 +717,17 @@ const StaffScan = ({ user }) => {
                         </div>
                     </div>
                     <div className="stat-item">
-                        <div className="stat-icon">⏰</div>
+                        <div className="stat-icon">♻️</div>
                         <div className="stat-content">
-                            <strong>Schedule Check</strong>
-                            <p>Automatically verifies if bin is scheduled for today</p>
+                            <strong>Recycling Refunds</strong>
+                            <p>Residents get refunds for recyclable materials</p>
                         </div>
                     </div>
                     <div className="stat-item">
-                        <div className="stat-icon">🧾</div>
+                        <div className="stat-icon">💰</div>
                         <div className="stat-content">
-                            <strong>Auto Invoice</strong>
-                            <p>Invoice generated automatically after collection</p>
+                            <strong>Instant Savings</strong>
+                            <p>Recycling refunds applied immediately to invoices</p>
                         </div>
                     </div>
                 </div>
