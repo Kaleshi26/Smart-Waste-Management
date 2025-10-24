@@ -39,9 +39,9 @@ public class User {
     private Double totalCharges = 0.0;
     private Double recyclingCredits = 0.0;
 
-    // FIX: Use @JsonManagedReference to match the @JsonBackReference in WasteBin
+    // In User entity
     @OneToMany(mappedBy = "resident", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    @JsonManagedReference("resident-bins")
+    @JsonIgnoreProperties({"resident", "collections", "schedules"}) // Break circular reference
     private List<WasteBin> wasteBins = new ArrayList<>();
 
     // FIX: Use @JsonIgnore for collections to avoid circular references

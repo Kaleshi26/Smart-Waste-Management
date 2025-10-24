@@ -25,22 +25,78 @@ const StaffScan = ({ user }) => {
     const [billingRates, setBillingRates] = useState(null);
     const [recyclingRates, setRecyclingRates] = useState(null);
 
-    // Fetch billing rates when component loads
+    // Fetch general billing rates when component loads
     useEffect(() => {
         fetchBillingRates();
     }, []);
 
-    // Check today's schedule when bin is found
+    // Check today's schedule and fetch resident-specific rates when bin is found
     useEffect(() => {
         if (currentBin) {
             checkTodaySchedule();
+            if (currentBin.resident) {
+                fetchResidentBillingRates(currentBin.resident.id);
+            }
         }
     }, [currentBin]);
+
+    // Helper function to extract city from address
+    const extractCityFromAddress = (address) => {
+        if (!address) return 'Unknown';
+
+        console.log('📍 Extracting city from address:', address);
+
+        // Simple city extraction - matches your backend logic
+        const addressParts = address.split(',');
+        if (addressParts.length > 1) {
+            const city = addressParts[addressParts.length - 1].trim();
+            console.log('✅ Extracted city:', city);
+            return city;
+        }
+        return address.trim();
+    };
+
+    // UPDATED: Fetch resident-specific billing rates
+    const fetchResidentBillingRates = async (residentId) => {
+        try {
+            console.log('🏙️ Fetching resident-specific billing rates for resident:', residentId);
+
+            const response = await axios.get(`http://localhost:8082/api/billing/models/resident/${residentId}`);
+            const billingModel = response.data;
+
+            console.log('✅ Resident billing model:', billingModel);
+
+            if (billingModel) {
+                const rates = {
+                    billingType: billingModel.billingType || 'WEIGHT_BASED',
+                    ratePerKg: parseFloat(billingModel.ratePerKg) || 0,
+                    monthlyFlatFee: parseFloat(billingModel.monthlyFlatFee) || 0,
+                    baseFee: parseFloat(billingModel.baseFee) || 0,
+                    additionalRatePerKg: parseFloat(billingModel.additionalRatePerKg) || 0,
+                    modelName: billingModel.city || 'Default',
+                    city: billingModel.city // Add city for display
+                };
+
+                console.log('🎯 Resident-specific rates:', rates);
+                setBillingRates(rates);
+
+                // Recalculate charges if weight is already entered
+                if (scanData.weight && currentBin) {
+                    const charges = calculateCharges(scanData.weight, currentBin.binType, recyclables, rates);
+                    setBillingInfo(charges);
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error fetching resident billing rates:', error);
+            console.log('🔄 Falling back to general billing rates...');
+            // Don't fetch general rates here to avoid infinite loop
+        }
+    };
 
     // UPDATED: Fetch all billing model fields
     const fetchBillingRates = async () => {
         try {
-            console.log('🔄 Fetching billing rates...');
+            console.log('🔄 Fetching general billing rates...');
 
             // Fetch billing models
             const billingResponse = await axios.get('http://localhost:8082/api/billing/models');
@@ -69,7 +125,8 @@ const StaffScan = ({ user }) => {
                     monthlyFlatFee: parseFloat(activeModel.monthlyFlatFee) || 0,
                     baseFee: parseFloat(activeModel.baseFee) || 0,
                     additionalRatePerKg: parseFloat(activeModel.additionalRatePerKg) || 0,
-                    modelName: activeModel.city || 'Default'
+                    modelName: activeModel.city || 'Default',
+                    city: activeModel.city || 'General'
                 };
 
                 console.log('🎯 Final rates being used:', rates);
@@ -79,11 +136,12 @@ const StaffScan = ({ user }) => {
                 console.warn('⚠️ No active billing model found, using defaults');
                 setBillingRates({
                     billingType: 'WEIGHT_BASED',
-                    ratePerKg: 5.0, // Make sure this is reasonable
+                    ratePerKg: 5.0,
                     monthlyFlatFee: 0,
                     baseFee: 0,
                     additionalRatePerKg: 0,
-                    modelName: 'Default'
+                    modelName: 'Default',
+                    city: 'General'
                 });
             }
 
@@ -106,7 +164,8 @@ const StaffScan = ({ user }) => {
                 monthlyFlatFee: 0,
                 baseFee: 0,
                 additionalRatePerKg: 0,
-                modelName: 'Default'
+                modelName: 'Default',
+                city: 'General'
             });
             setRecyclingRates({
                 'PLASTIC': 0.8,
@@ -117,6 +176,7 @@ const StaffScan = ({ user }) => {
             });
         }
     };
+
     const checkTodaySchedule = async () => {
         try {
             const response = await axios.get(`http://localhost:8082/api/waste/bins/${currentBin.binId}/schedule/today`);
@@ -127,9 +187,11 @@ const StaffScan = ({ user }) => {
         }
     };
 
-    // UPDATED: Calculate charges to handle ALL billing types
-    const calculateCharges = (weight, binType, recyclables = []) => {
-        if (!billingRates || !recyclingRates) {
+    // UPDATED: Calculate charges to handle ALL billing types with custom rates parameter
+    const calculateCharges = (weight, binType, recyclables = [], customRates = null) => {
+        const ratesToUse = customRates || billingRates;
+
+        if (!ratesToUse || !recyclingRates) {
             console.log('❌ Billing rates not loaded yet');
             return null;
         }
@@ -139,14 +201,14 @@ const StaffScan = ({ user }) => {
 
         console.log('🧮 Starting calculation:', {
             weight: parsedWeight,
-            billingRates: billingRates,
+            billingRates: ratesToUse,
             recyclablesCount: recyclables.length
         });
 
-        const baseRate = billingRates.ratePerKg;
-        const billingType = billingRates.billingType || 'WEIGHT_BASED';
+        const baseRate = ratesToUse.ratePerKg;
+        const billingType = ratesToUse.billingType || 'WEIGHT_BASED';
 
-        console.log('💰 Using base rate:', baseRate, 'for type:', billingType);
+        console.log('💰 Using base rate:', baseRate, 'for type:', billingType, 'in city:', ratesToUse.city);
 
         let baseCharge = 0;
         let weightBasedCharge = 0;
@@ -159,13 +221,13 @@ const StaffScan = ({ user }) => {
                 break;
 
             case 'FLAT_FEE':
-                baseCharge = billingRates.monthlyFlatFee || 0;
+                baseCharge = ratesToUse.monthlyFlatFee || 0;
                 console.log('📊 Flat fee charge:', baseCharge);
                 break;
 
             case 'HYBRID':
-                baseCharge = billingRates.baseFee || 0;
-                weightBasedCharge = parsedWeight * (billingRates.additionalRatePerKg || 0);
+                baseCharge = ratesToUse.baseFee || 0;
+                weightBasedCharge = parsedWeight * (ratesToUse.additionalRatePerKg || 0);
                 console.log('📊 Hybrid charge - Base:', baseCharge, '+ Weight:', weightBasedCharge);
                 break;
 
@@ -208,7 +270,8 @@ const StaffScan = ({ user }) => {
             weightBasedCharge,
             otherCharges,
             totalRecyclingRefund,
-            totalCharge
+            totalCharge,
+            city: ratesToUse.city
         });
 
         return {
@@ -223,9 +286,11 @@ const StaffScan = ({ user }) => {
             weight: parsedWeight,
             binType,
             hasRecycling: totalRecyclingRefund > 0,
-            modelName: billingRates.modelName
+            modelName: ratesToUse.modelName,
+            city: ratesToUse.city
         };
     };
+
     const handleScanChange = (e) => {
         setScanData({
             ...scanData,
@@ -292,6 +357,13 @@ const StaffScan = ({ user }) => {
             const bin = response.data;
             setCurrentBin(bin);
             toast.success(`Bin ${bin.binId} found!`);
+
+            if (!bin.resident) {
+                toast.error('Warning: This bin is not assigned to any resident', {
+                    icon: '⚠️',
+                    duration: 4000
+                });
+            }
         } catch (error) {
             console.error('Error scanning bin:', error);
             toast.error('Bin not found. Please check RFID tag or use manual entry.');
@@ -313,6 +385,13 @@ const StaffScan = ({ user }) => {
             const bin = response.data;
             setCurrentBin(bin);
             toast.success(`Bin ${bin.binId} found!`);
+
+            if (!bin.resident) {
+                toast.error('Warning: This bin is not assigned to any resident', {
+                    icon: '⚠️',
+                    duration: 4000
+                });
+            }
         } catch (error) {
             console.error('Error looking up bin:', error);
             toast.error('Bin not found. Please check Bin ID.');
@@ -333,6 +412,12 @@ const StaffScan = ({ user }) => {
     const recordCollection = async () => {
         if (!currentBin) {
             toast.error('Please scan or lookup a bin first');
+            return;
+        }
+
+        // ENHANCED: Check if bin has resident assigned
+        if (!currentBin.resident) {
+            toast.error('This bin is not assigned to any resident. Cannot record collection.');
             return;
         }
 
@@ -414,11 +499,12 @@ const StaffScan = ({ user }) => {
                 </div>
                 <div className="header-actions">
                     <span className="staff-badge">Staff Mode</span>
-                    {/* Show current billing rate and type */}
+                    {/* UPDATED: Show current billing rate and type WITH CITY */}
                     <div className="current-rate-badge">
                         {billingRates.billingType === 'WEIGHT_BASED' && `Rate: $${billingRates.ratePerKg}/kg`}
                         {billingRates.billingType === 'FLAT_FEE' && `Flat Fee: $${billingRates.monthlyFlatFee}`}
                         {billingRates.billingType === 'HYBRID' && `Hybrid: $${billingRates.baseFee} + $${billingRates.additionalRatePerKg}/kg`}
+                        {billingRates.city && ` (${billingRates.city})`}
                     </div>
                 </div>
             </div>
@@ -500,6 +586,9 @@ const StaffScan = ({ user }) => {
                             {todaySchedule?.scheduled && (
                                 <span className="schedule-badge">Scheduled for Today</span>
                             )}
+                            {!currentBin.resident && (
+                                <span className="warning-badge">No Resident Assigned</span>
+                            )}
                         </div>
 
                         <div className="bin-details-grid">
@@ -527,6 +616,20 @@ const StaffScan = ({ user }) => {
                                 <label>Resident:</label>
                                 <span>{currentBin.resident?.name || 'Not assigned'}</span>
                             </div>
+                            {/* ADDED: City Information */}
+                            {currentBin.resident?.address && (
+                                <div className="detail-item">
+                                    <label>City:</label>
+                                    <span>{extractCityFromAddress(currentBin.resident.address)}</span>
+                                </div>
+                            )}
+                            {/* ADDED: Billing Model Info */}
+                            {billingRates.city && (
+                                <div className="detail-item">
+                                    <label>Billing Model:</label>
+                                    <span>{billingRates.city} ({billingRates.billingType})</span>
+                                </div>
+                            )}
                         </div>
 
                         {/* Collection Data Form */}
@@ -690,10 +793,15 @@ const StaffScan = ({ user }) => {
                                 </div>
                             )}
 
-                            {/* UPDATED: Billing Preview - Handles all billing types */}
+                            {/* UPDATED: Billing Preview with City Information */}
                             {billingInfo && (
                                 <div className="billing-preview">
                                     <h5>💰 Charge Calculation ({billingInfo.billingType})</h5>
+                                    {billingInfo.city && (
+                                        <div className="billing-location">
+                                            <small className="text-muted">📍 Billing rates for: {billingInfo.city}</small>
+                                        </div>
+                                    )}
                                     <div className="charge-breakdown">
                                         {/* Show components based on billing type */}
                                         {billingInfo.baseCharge > 0 && (
@@ -779,16 +887,17 @@ const StaffScan = ({ user }) => {
 
                             <button
                                 onClick={recordCollection}
-                                disabled={scanning || !scanData.weight}
+                                disabled={scanning || !scanData.weight || !currentBin.resident}
                                 className="btn btn-success btn-block"
                             >
                                 {scanning ? 'Recording...' : 'Record Collection'}
+                                {!currentBin.resident && ' (No Resident)'}
                             </button>
                         </div>
                     </div>
                 )}
 
-                {/* UPDATED: Invoice Preview Modal */}
+                {/* UPDATED: Invoice Preview Modal with City Info */}
                 {showInvoicePreview && billingInfo && (
                     <div className="modal-overlay">
                         <div className="modal">
@@ -800,6 +909,9 @@ const StaffScan = ({ user }) => {
                                     <div className="success-icon">✅</div>
                                     <h4>Collection Recorded Successfully</h4>
                                     <p>Bin {currentBin?.binId} collection has been recorded and invoice generated.</p>
+                                    {billingInfo.city && (
+                                        <p className="text-muted">📍 Applied {billingInfo.city} billing rates</p>
+                                    )}
                                 </div>
 
                                 <div className="invoice-summary">
@@ -817,6 +929,12 @@ const StaffScan = ({ user }) => {
                                             <span>Waste Type:</span>
                                             <span>{currentBin?.binType?.replace(/_/g, ' ')}</span>
                                         </div>
+                                        {billingInfo.city && (
+                                            <div className="invoice-item">
+                                                <span>Billing City:</span>
+                                                <span>{billingInfo.city}</span>
+                                            </div>
+                                        )}
 
                                         {/* UPDATED: Match invoice structure for all billing types */}
                                         {billingInfo.baseCharge > 0 && (
@@ -877,6 +995,9 @@ const StaffScan = ({ user }) => {
                                         {billingInfo.hasRecycling && (
                                             <li>✅ Recycling credits applied: <strong>${billingInfo.totalRecyclingRefund.toFixed(2)}</strong></li>
                                         )}
+                                        {billingInfo.city && (
+                                            <li>✅ {billingInfo.city} billing rates applied</li>
+                                        )}
                                     </ul>
                                 </div>
                             </div>
@@ -897,8 +1018,8 @@ const StaffScan = ({ user }) => {
                     <div className="stat-item">
                         <div className="stat-icon">📊</div>
                         <div className="stat-content">
-                            <strong>Real-time Billing</strong>
-                            <p>Charges calculated using current billing model</p>
+                            <strong>City-Specific Billing</strong>
+                            <p>Charges calculated using resident's city billing model</p>
                         </div>
                     </div>
                     <div className="stat-item">

@@ -62,6 +62,7 @@ public class CollectionService {
             QualityGrade.AVERAGE, 0.4,    // $0.4/kg for average quality
             QualityGrade.POOR, 0.2        // $0.2/kg for poor quality
     );
+
     // FIXED: Enhanced method with proper error handling
     public List<CollectionEvent> getCollectionsByCollector(Long collectorId) {
         try {
@@ -125,8 +126,7 @@ public class CollectionService {
                 .collect(Collectors.toList());
     }
 
-    // In CollectionService.java - Fix the invoice generation
-// FIXED: Proper invoice generation with correct amounts
+    // FIXED: Proper invoice generation with correct amounts
     private Invoice generateInvoiceAfterCollection(User resident, Double charge, Double weight,
                                                    BinType binType, Double refundAmount, Double recyclableWeight) {
         try {
@@ -177,6 +177,7 @@ public class CollectionService {
             return null;
         }
     }
+
     // NEW: Link recycling collections to invoice
     private void linkRecyclingToInvoice(List<RecyclingCollection> recyclingCollections, Invoice invoice) {
         for (RecyclingCollection recycling : recyclingCollections) {
@@ -185,6 +186,25 @@ public class CollectionService {
         }
     }
 
+    // Add this method to CollectionService.java
+    private String extractCityFromAddress(String address) {
+        if (address == null || address.trim().isEmpty()) {
+            return "Colombo"; // Default city
+        }
+
+        // Simple extraction - you might need more sophisticated parsing
+        String[] addressParts = address.split(",");
+        if (addressParts.length > 0) {
+            // Get the last part (usually city)
+            String city = addressParts[addressParts.length - 1].trim();
+            System.out.println("📍 Extracted city from address: " + city);
+            return city;
+        }
+
+        return "Colombo"; // Default fallback
+    }
+
+    // FIXED: Removed duplicate billingModel variable declaration
     public CollectionEvent recordCollection(CollectionRequestDto request) {
         // 1. Validate bin exists and get details
         WasteBin bin = wasteBinRepository.findById(request.getBinId())
@@ -200,18 +220,34 @@ public class CollectionService {
             throw new RuntimeException("Bin not assigned to any resident: " + request.getBinId());
         }
 
-        // 3. Validate collection schedule
+        // 3. ✅ FIXED: Extract city from resident's address and get city-specific billing model
+        String city = extractCityFromAddress(resident.getAddress());
+        System.out.println("🏙️ Using billing model for city: " + city + " (from address: " + resident.getAddress() + ")");
+
+        // FIXED: Use only one billingModel variable declaration
+        BillingModel billingModel = billingService.getActiveBillingModelForCity(city);
+
+        if (billingModel == null) {
+            System.out.println("⚠️ No billing model found for city: " + city + ", using default rates");
+            // Create a default billing model or use fallback
+            billingModel = getDefaultBillingModel();
+        } else {
+            System.out.println("✅ Using billing model: " + billingModel.getBillingType() +
+                    " for " + billingModel.getCity() +
+                    " - Rate: $" + billingModel.getRatePerKg() + "/kg");
+        }
+
+        // 4. Validate collection schedule
         LocalDateTime collectionTime = LocalDateTime.now();
         if (!isCollectionScheduledForToday(bin.getBinId(), collectionTime.toLocalDate())) {
             feedbackService.provideErrorFeedback("No collection scheduled for this bin today");
             throw new RuntimeException("No collection scheduled for bin: " + request.getBinId() + " on " + collectionTime.toLocalDate());
         }
 
-        // 4. Get billing model and calculate charges
-        BillingModel billingModel = billingService.getActiveBillingModelForResident(resident.getId());
+        // 5. Calculate charges using the city-specific billing model
         Double charge = calculateCollectionCharge(billingModel, request.getWeight(), bin.getBinType());
 
-        // 5. Create collection record
+        // 6. Create collection record
         CollectionEvent collection = new CollectionEvent();
         collection.setCollectionTime(collectionTime);
         collection.setWeight(request.getWeight());
@@ -219,7 +255,7 @@ public class CollectionService {
         collection.setWasteBin(bin);
         collection.setCollector(userRepository.findById(request.getCollectorId()).orElse(null));
 
-        // 6. ✅ PROCESS RECYCLABLES IF ANY
+        // 7. ✅ PROCESS RECYCLABLES IF ANY
         if (request.hasRecyclables()) {
             processRecyclables(collection, request.getRecyclables(), resident);
 
@@ -230,10 +266,10 @@ public class CollectionService {
 
         CollectionEvent savedCollection = collectionRepository.save(collection);
 
-        // 7. Update collection schedule status
+        // 8. Update collection schedule status
         updateCollectionScheduleStatus(bin.getBinId(), collectionTime.toLocalDate());
 
-        // 8. ✅ AUTO-GENERATE INVOICE IMMEDIATELY AFTER COLLECTION (with refunds)
+        // 9. ✅ AUTO-GENERATE INVOICE IMMEDIATELY AFTER COLLECTION (with refunds)
         Invoice autoInvoice = generateInvoiceAfterCollection(
                 resident, charge, request.getWeight(),
                 bin.getBinType(), collection.getRefundAmount(), collection.getRecyclableWeight()
@@ -249,20 +285,33 @@ public class CollectionService {
 
         collectionRepository.save(savedCollection);
 
-        // 9. Update bin level (reset to 0 after collection)
+        // 10. Update bin level (reset to 0 after collection)
         updateBinLevelAfterCollection(bin);
 
-        // 10. Update resident recycling credits
+        // 11. Update resident recycling credits
         if (request.hasRecyclables()) {
             updateResidentRecyclingCredits(resident, collection.getRefundAmount());
         }
 
-        // 11. Provide feedback
+        // 12. Provide feedback
         String feedbackMessage = buildCollectionFeedback(request, collection);
         feedbackService.provideSuccessFeedback(feedbackMessage);
         feedbackService.provideAudioConfirmation("Collection recorded successfully");
 
         return savedCollection;
+    }
+
+    // NEW: Default billing model fallback
+    private BillingModel getDefaultBillingModel() {
+        // Create a default billing model with reasonable rates
+        BillingModel defaultModel = new BillingModel();
+        defaultModel.setCity("Default");
+        defaultModel.setBillingType(com.CSSEProject.SmartWasteManagement.payment.entity.BillingType.WEIGHT_BASED);
+        defaultModel.setRatePerKg(5.0); // Reasonable default rate
+        defaultModel.setMonthlyFlatFee(0.0);
+        defaultModel.setBaseFee(0.0);
+        defaultModel.setAdditionalRatePerKg(0.0);
+        return defaultModel;
     }
 
     private void processRecyclables(CollectionEvent collection, List<RecyclableItemDto> recyclables, User resident) {
@@ -383,13 +432,6 @@ public class CollectionService {
                 return 0.0;
         }
     }
-
-    // REMOVED: The problematic method that was causing compilation errors
-    /*
-    private Double calculateRecyclingPayback(BillingModel model, Double weight, BinType wasteType) {
-        // This method is removed as it's no longer compatible with our new system
-    }
-    */
 
     private boolean isCollectionScheduledForToday(String binId, LocalDate today) {
         Optional<CollectionSchedule> schedule = collectionScheduleRepository
@@ -536,5 +578,4 @@ public class CollectionService {
             public final String residentName = bin.getResident() != null ? bin.getResident().getName() : "Unassigned";
         };
     }
-
 }
