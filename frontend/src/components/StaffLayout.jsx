@@ -13,6 +13,8 @@ const StaffLayout = ({ user, onLogout }) => {
                 return 'Staff Dashboard';
             case '/staff/scan':
                 return 'Scan Bin';
+            case '/staff/scan-offline':
+                return 'Offline Collection'; // 🆕 NEW
             case '/staff/collections':
                 return 'Collection History';
             case '/staff/profile':
@@ -29,6 +31,8 @@ const StaffLayout = ({ user, onLogout }) => {
                 return 'Overview of your waste collection operations';
             case '/staff/scan':
                 return 'Scan bins and record waste collection';
+            case '/staff/scan-offline':
+                return 'Record collections without internet connection'; // 🆕 NEW
             case '/staff/collections':
                 return 'View your collection history and performance';
             case '/staff/profile':

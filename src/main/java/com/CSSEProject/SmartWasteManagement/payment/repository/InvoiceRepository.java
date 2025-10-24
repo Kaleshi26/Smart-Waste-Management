@@ -24,4 +24,6 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @Query("SELECT COUNT(i) FROM Invoice i WHERE i.status = 'PENDING' AND i.dueDate < CURRENT_DATE")
     Long getOverdueInvoiceCount();
 
-}
+    // Add this method for admin view
+    @Query("SELECT i FROM Invoice i LEFT JOIN FETCH i.resident ORDER BY i.invoiceDate DESC")
+    List<Invoice> findAllWithResident();}

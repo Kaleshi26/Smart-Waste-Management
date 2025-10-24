@@ -1,4 +1,3 @@
-// File: frontend/src/pages/admin/InvoicesPayments.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -21,12 +20,31 @@ const InvoicesPayments = ({ user }) => {
     const fetchInvoices = async () => {
         try {
             setLoading(true);
-            // Try to get all invoices
-            const response = await axios.get('http://localhost:8082/api/invoices').catch(() => ({ data: [] }));
-            setInvoices(response.data || []);
+            // Use the correct admin endpoint
+            const response = await axios.get('http://localhost:8082/api/invoices/admin/all');
+            console.log('📊 Admin invoices data:', response.data);
+
+            if (Array.isArray(response.data)) {
+                setInvoices(response.data);
+            } else {
+                console.error('Unexpected response format:', response.data);
+                setInvoices([]);
+            }
         } catch (error) {
             console.error('Error fetching invoices:', error);
-            toast.error('Failed to load invoices');
+            // Fallback: try to get invoices from resident endpoint and filter
+            try {
+                const fallbackResponse = await axios.get('http://localhost:8082/api/invoices');
+                if (Array.isArray(fallbackResponse.data)) {
+                    setInvoices(fallbackResponse.data);
+                } else {
+                    setInvoices([]);
+                }
+            } catch (fallbackError) {
+                console.error('Fallback also failed:', fallbackError);
+                toast.error('Failed to load invoices');
+                setInvoices([]);
+            }
         } finally {
             setLoading(false);
         }
@@ -45,7 +63,8 @@ const InvoicesPayments = ({ user }) => {
             filtered = filtered.filter(invoice =>
                 invoice.invoiceNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 invoice.resident?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                invoice.resident?.email?.toLowerCase().includes(searchTerm.toLowerCase())
+                invoice.resident?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                invoice.resident?.phone?.toLowerCase().includes(searchTerm.toLowerCase())
             );
         }
 
@@ -70,13 +89,15 @@ const InvoicesPayments = ({ user }) => {
         const paidInvoices = invoices.filter(inv => inv.status === 'PAID').length;
         const overdueInvoices = invoices.filter(inv => inv.status === 'OVERDUE').length;
 
-        const totalRevenue = invoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
+        const totalRevenue = invoices
+            .filter(inv => inv.status === 'PAID')
+            .reduce((sum, inv) => sum + (inv.finalAmount || inv.totalAmount || 0), 0);
+
         const pendingAmount = invoices
             .filter(inv => inv.status === 'PENDING' || inv.status === 'OVERDUE')
-            .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
-        const collectedAmount = invoices
-            .filter(inv => inv.status === 'PAID')
-            .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
+            .reduce((sum, inv) => sum + (inv.finalAmount || inv.totalAmount || 0), 0);
+
+        const collectedAmount = totalRevenue;
 
         return {
             totalInvoices,
@@ -91,11 +112,11 @@ const InvoicesPayments = ({ user }) => {
 
     const markAsPaid = async (invoiceId) => {
         try {
-            await axios.put(`http://localhost:8082/api/invoices/${invoiceId}/status`, {
+            await axios.put(`http://localhost:8082/api/invoices/admin/${invoiceId}/status`, {
                 status: 'PAID'
             });
             toast.success('Invoice marked as paid');
-            fetchInvoices();
+            fetchInvoices(); // Refresh the list
         } catch (error) {
             console.error('Error updating invoice:', error);
             toast.error('Failed to update invoice status');
@@ -104,12 +125,25 @@ const InvoicesPayments = ({ user }) => {
 
     const sendReminder = async (invoiceId) => {
         try {
-            // This would integrate with your notification service
+            // Implement your notification service integration here
+            console.log('Sending reminder for invoice:', invoiceId);
             toast.success('Payment reminder sent to resident');
         } catch (error) {
             console.error('Error sending reminder:', error);
             toast.error('Failed to send reminder');
         }
+    };
+
+    const formatCurrency = (amount) => {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD'
+        }).format(amount || 0);
+    };
+
+    const formatDate = (dateString) => {
+        if (!dateString) return 'N/A';
+        return new Date(dateString).toLocaleDateString();
     };
 
     const summary = calculateSummary();
@@ -128,6 +162,13 @@ const InvoicesPayments = ({ user }) => {
             <div className="page-header">
                 <h1>Invoices & Payments</h1>
                 <p>Manage resident invoices and track payment status</p>
+                <button
+                    onClick={fetchInvoices}
+                    className="btn btn-secondary"
+                    disabled={loading}
+                >
+                    {loading ? 'Refreshing...' : 'Refresh Data'}
+                </button>
             </div>
 
             {/* Summary Cards */}
@@ -149,7 +190,7 @@ const InvoicesPayments = ({ user }) => {
                         <div className="stat-value">{summary.pendingInvoices + summary.overdueInvoices}</div>
                         <div className="stat-title">Pending Payment</div>
                         <div className="stat-breakdown">
-                            ${summary.pendingAmount.toFixed(2)} due
+                            {formatCurrency(summary.pendingAmount)} due
                         </div>
                     </div>
                 </div>
@@ -157,7 +198,7 @@ const InvoicesPayments = ({ user }) => {
                 <div className="stat-card success">
                     <div className="stat-icon">💰</div>
                     <div className="stat-content">
-                        <div className="stat-value">${summary.collectedAmount.toFixed(2)}</div>
+                        <div className="stat-value">{formatCurrency(summary.collectedAmount)}</div>
                         <div className="stat-title">Collected Revenue</div>
                         <div className="stat-breakdown">
                             From {summary.paidInvoices} invoices
@@ -182,7 +223,7 @@ const InvoicesPayments = ({ user }) => {
                 <div className="filter-group">
                     <input
                         type="text"
-                        placeholder="Search by invoice number, resident name..."
+                        placeholder="Search by invoice number, resident name, email..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="search-input"
@@ -198,21 +239,33 @@ const InvoicesPayments = ({ user }) => {
                         <option value="PENDING">Pending</option>
                         <option value="PAID">Paid</option>
                         <option value="OVERDUE">Overdue</option>
-                        <option value="CANCELLED">Cancelled</option>
                     </select>
                 </div>
                 <div className="filter-group">
-                    <span className="results-count">{filteredInvoices.length} invoices found</span>
+                    <span className="results-count">
+                        {filteredInvoices.length} invoices found
+                    </span>
                 </div>
             </div>
+
+            {/* Debug Info - Remove in production */}
+            {process.env.NODE_ENV === 'development' && (
+                <div className="debug-info">
+                    <details>
+                        <summary>Debug Data ({invoices.length} invoices)</summary>
+                        <pre>{JSON.stringify(invoices.slice(0, 2), null, 2)}</pre>
+                    </details>
+                </div>
+            )}
 
             {/* Invoices Table */}
             <div className="card">
                 <div className="card-header">
                     <h3>Invoice Management</h3>
                     <div className="header-actions">
-                        <button className="btn btn-primary">Generate Bulk Invoices</button>
-                        <button className="btn btn-secondary">Export Report</button>
+                        <button className="btn btn-primary" onClick={fetchInvoices}>
+                            Refresh All
+                        </button>
                     </div>
                 </div>
 
@@ -236,39 +289,40 @@ const InvoicesPayments = ({ user }) => {
                                         <div className="invoice-cell">
                                             <strong>{invoice.invoiceNumber}</strong>
                                             <small>
-                                                {invoice.issueDate ?
-                                                    new Date(invoice.issueDate).toLocaleDateString() :
-                                                    'N/A'
-                                                }
+                                                Issued: {formatDate(invoice.invoiceDate)}
                                             </small>
-                                            {invoice.collectionEvents?.length > 0 && (
-                                                <small>{invoice.collectionEvents.length} collections</small>
-                                            )}
+                                            <small>
+                                                Period: {formatDate(invoice.periodStart)} - {formatDate(invoice.periodEnd)}
+                                            </small>
                                         </div>
                                     </td>
                                     <td>
                                         <div className="resident-cell">
                                             <strong>{invoice.resident?.name || 'Unknown Resident'}</strong>
                                             <span>{invoice.resident?.email || 'No email'}</span>
-                                            <small>{invoice.resident?.phoneNumber || 'No phone'}</small>
+                                            <small>{invoice.resident?.phone || 'No phone'}</small>
                                         </div>
                                     </td>
                                     <td>
                                         <div className="amount-cell">
-                                            <strong>${invoice.totalAmount?.toFixed(2)}</strong>
-                                            {invoice.weightBasedCharge && (
-                                                <small>Weight: {invoice.totalWeight || 0} kg</small>
+                                            <strong>{formatCurrency(invoice.finalAmount || invoice.totalAmount)}</strong>
+                                            {invoice.recyclingCredits > 0 && (
+                                                <small className="text-success">
+                                                    -{formatCurrency(invoice.recyclingCredits)} credits
+                                                </small>
                                             )}
                                         </div>
                                     </td>
                                     <td>
-                                        {invoice.dueDate ?
-                                            new Date(invoice.dueDate).toLocaleDateString() :
-                                            'N/A'
-                                        }
-                                        {invoice.dueDate && new Date(invoice.dueDate) < new Date() && invoice.status !== 'PAID' && (
-                                            <div className="overdue-indicator">Overdue</div>
-                                        )}
+                                        <div className={`due-date-cell ${
+                                            new Date(invoice.dueDate) < new Date() &&
+                                            invoice.status !== 'PAID' ? 'overdue' : ''
+                                        }`}>
+                                            {formatDate(invoice.dueDate)}
+                                            {new Date(invoice.dueDate) < new Date() && invoice.status !== 'PAID' && (
+                                                <div className="overdue-indicator">Overdue</div>
+                                            )}
+                                        </div>
                                     </td>
                                     <td>{getStatusBadge(invoice.status)}</td>
                                     <td>
@@ -278,19 +332,29 @@ const InvoicesPayments = ({ user }) => {
                                                     <button
                                                         className="btn btn-sm btn-success"
                                                         onClick={() => markAsPaid(invoice.id)}
+                                                        title="Mark as paid"
                                                     >
-                                                        Mark Paid
+                                                        ✓ Paid
                                                     </button>
                                                     <button
                                                         className="btn btn-sm btn-warning"
                                                         onClick={() => sendReminder(invoice.id)}
+                                                        title="Send payment reminder"
                                                     >
-                                                        Remind
+                                                        ⏰ Remind
                                                     </button>
                                                 </>
                                             )}
-                                            <button className="btn btn-sm btn-info">View</button>
-                                            <button className="btn btn-sm btn-secondary">Edit</button>
+                                            <button
+                                                className="btn btn-sm btn-info"
+                                                onClick={() => {
+                                                    // View invoice details
+                                                    console.log('Invoice details:', invoice);
+                                                    toast.info(`Viewing ${invoice.invoiceNumber}`);
+                                                }}
+                                            >
+                                                👁️ View
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -313,40 +377,6 @@ const InvoicesPayments = ({ user }) => {
                         </button>
                     </div>
                 )}
-            </div>
-
-            {/* Payment Analytics */}
-            <div className="card">
-                <div className="card-header">
-                    <h3>Payment Analytics</h3>
-                </div>
-                <div className="analytics-grid">
-                    <div className="analytics-item">
-                        <h4>Collection Rate</h4>
-                        <div className="progress-bar">
-                            <div
-                                className="progress-fill success"
-                                style={{ width: `${summary.totalInvoices > 0 ? (summary.paidInvoices / summary.totalInvoices) * 100 : 0}%` }}
-                            ></div>
-                        </div>
-                        <span>{summary.totalInvoices > 0 ? ((summary.paidInvoices / summary.totalInvoices) * 100).toFixed(1) : 0}%</span>
-                    </div>
-                    <div className="analytics-item">
-                        <h4>Average Payment Time</h4>
-                        <div className="metric-value">7.2 days</div>
-                        <small>From issue to payment</small>
-                    </div>
-                    <div className="analytics-item">
-                        <h4>Revenue Trend</h4>
-                        <div className="metric-value positive">+12.5%</div>
-                        <small>vs last month</small>
-                    </div>
-                    <div className="analytics-item">
-                        <h4>Disputed Invoices</h4>
-                        <div className="metric-value">2</div>
-                        <small>Requiring resolution</small>
-                    </div>
-                </div>
             </div>
         </div>
     );

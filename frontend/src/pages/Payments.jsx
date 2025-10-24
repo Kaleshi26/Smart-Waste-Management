@@ -118,39 +118,125 @@ const Payments = ({ user }) => {
         }
     };
 
-    const handleDownloadReceipt = (payment) => {
-        // Create a simple receipt download
-        const receiptContent = `
-            WASTE MANAGEMENT SERVICE - PAYMENT RECEIPT
-            ------------------------------------------
-            Invoice Number: ${payment.invoiceNumber}
-            Transaction ID: ${payment.transactionId}
-            Payment Date: ${formatDate(payment.paymentDate)}
-            Payment Method: ${payment.paymentMethod}
-            Amount: $${payment.amount.toFixed(2)}
-            Status: ${payment.status}
-            
-            Billing Period: ${payment.periodStart} to ${payment.periodEnd}
-            Base Charge: $${(payment.baseCharge || 0).toFixed(2)}
-            Weight Charge: $${(payment.weightBasedCharge || 0).toFixed(2)}
-            Recycling Credits: -$${(payment.recyclingCredits || 0).toFixed(2)}
-            
-            Thank you for your payment!
-        `;
 
-        const blob = new Blob([receiptContent], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `receipt-${payment.invoiceNumber}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+    // Alternative PDF generation using html2canvas and jsPDF (more advanced)
+    const handleDownloadReceiptAdvanced = async (payment) => {
+        try {
+            const { jsPDF } = await import('jspdf');
+            const html2canvas = await import('html2canvas');
 
-        toast.success('Receipt downloaded!');
+            // Create a temporary div with receipt content
+            const receiptDiv = document.createElement('div');
+            receiptDiv.style.position = 'absolute';
+            receiptDiv.style.left = '-9999px';
+            receiptDiv.style.top = '0';
+            receiptDiv.style.width = '210mm';
+            receiptDiv.style.padding = '20mm';
+            receiptDiv.style.fontFamily = 'Arial, sans-serif';
+            receiptDiv.style.backgroundColor = 'white';
+            receiptDiv.innerHTML = `
+                <div style="text-align: center; margin-bottom: 30px;">
+                    <h1 style="color: #219653; margin: 0; font-size: 24px;">WASTE MANAGEMENT SERVICE</h1>
+                    <h2 style="color: #666; margin: 5px 0; font-size: 16px;">PAYMENT RECEIPT</h2>
+                </div>
+                
+                <div style="border-bottom: 1px solid #ddd; padding-bottom: 15px; margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 10px 0; font-size: 14px;">RECEIPT DETAILS</h3>
+                    <table style="width: 100%; font-size: 12px;">
+                        <tr>
+                            <td style="font-weight: bold; padding: 4px 0;">Invoice Number:</td>
+                            <td>${payment.invoiceNumber}</td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: bold; padding: 4px 0;">Transaction ID:</td>
+                            <td>${payment.transactionId}</td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: bold; padding: 4px 0;">Payment Date:</td>
+                            <td>${formatDate(payment.paymentDate)}</td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: bold; padding: 4px 0;">Payment Method:</td>
+                            <td>${payment.paymentMethod.replace(/_/g, ' ')}</td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: bold; padding: 4px 0;">Amount Paid:</td>
+                            <td style="font-weight: bold; color: #219653;">$${payment.amount.toFixed(2)}</td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 10px 0; font-size: 14px;">BILLING PERIOD</h3>
+                    <p style="margin: 0; font-size: 12px; color: #666;">${payment.periodStart} to ${payment.periodEnd}</p>
+                </div>
+                
+                <div style="margin-bottom: 30px;">
+                    <h3 style="margin: 0 0 10px 0; font-size: 14px;">CHARGES BREAKDOWN</h3>
+                    <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 8px 0;">Base Service Charge:</td>
+                            <td style="text-align: right; padding: 8px 0;">$${(payment.baseCharge || 0).toFixed(2)}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0;">Weight-Based Charge:</td>
+                            <td style="text-align: right; padding: 8px 0;">$${(payment.weightBasedCharge || 0).toFixed(2)}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #219653;">Recycling Credits:</td>
+                            <td style="text-align: right; padding: 8px 0; color: #219653;">-$${(payment.recyclingCredits || 0).toFixed(2)}</td>
+                        </tr>
+                        <tr style="border-top: 1px solid #ddd;">
+                            <td style="padding: 12px 0; font-weight: bold;">TOTAL AMOUNT:</td>
+                            <td style="text-align: right; padding: 12px 0; font-weight: bold;">$${payment.amount.toFixed(2)}</td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <div style="text-align: center; color: #999; font-size: 10px; margin-top: 40px;">
+                    <p style="margin: 5px 0;">Thank you for choosing our waste management services!</p>
+                    <p style="margin: 5px 0;">This receipt is proof of your payment.</p>
+                    <p style="margin: 5px 0;">Generated on ${new Date().toLocaleDateString()} • Receipt ID: ${payment.transactionId}</p>
+                </div>
+            `;
+
+            document.body.appendChild(receiptDiv);
+
+            // Convert to canvas then to PDF
+            const canvas = await html2canvas.default(receiptDiv);
+            const imgData = canvas.toDataURL('image/png');
+
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const imgWidth = 210; // A4 width in mm
+            const pageHeight = 295; // A4 height in mm
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            let heightLeft = imgHeight;
+
+            let position = 0;
+
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+
+            while (heightLeft >= 0) {
+                position = heightLeft - imgHeight;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+            }
+
+            pdf.save(`receipt-${payment.invoiceNumber}.pdf`);
+
+            // Clean up
+            document.body.removeChild(receiptDiv);
+
+            toast.success('PDF receipt downloaded!');
+
+        } catch (error) {
+            console.error('Error generating advanced PDF:', error);
+            // Fallback to basic PDF
+            handleDownloadReceipt(payment);
+        }
     };
-
     const handleViewDetails = (payment) => {
         // Show payment details in a modal or alert
         const details = `
@@ -309,8 +395,9 @@ Transaction: ${payment.transactionId}
                                             <button
                                                 className="btn btn-sm btn-primary"
                                                 onClick={() => handleDownloadReceipt(payment)}
+                                                title="Download PDF Receipt"
                                             >
-                                                Receipt
+                                                📄 PDF Receipt
                                             </button>
                                         </div>
                                     </td>
@@ -388,16 +475,7 @@ Transaction: ${payment.transactionId}
                 </div>
             )}
 
-            {/* Debug Info - Remove in production */}
-            {process.env.NODE_ENV === 'development' && (
-                <div className="card debug-info">
-                    <h4>Debug Information</h4>
-                    <details>
-                        <summary>Show raw payment data</summary>
-                        <pre>{JSON.stringify(payments, null, 2)}</pre>
-                    </details>
-                </div>
-            )}
+
         </div>
     );
 };

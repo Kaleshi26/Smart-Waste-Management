@@ -17,54 +17,66 @@ const CollectionReports = ({ user }) => {
     const fetchCollectionData = async () => {
         try {
             setLoading(true);
+            console.log('🔄 Fetching collection data for date range:', dateRange);
 
-            // Fetch all collections within date range
-            const collectionsResponse = await axios.get(
-                `http://localhost:8082/api/waste/collections?start=${dateRange.start}T00:00:00&end=${dateRange.end}T23:59:59`
-            );
+            // Get all staff members first
+            const staffResponse = await axios.get('http://localhost:8082/api/auth/users/role/ROLE_STAFF');
+            const staffMembers = staffResponse.data || [];
+            console.log('👷 Found staff members:', staffMembers.length);
 
-            console.log('Collections API Response:', collectionsResponse.data);
+            // Fetch collections for each staff member
+            const allCollections = [];
+            const staffPromises = staffMembers.map(async (staff) => {
+                try {
+                    console.log(`📦 Fetching collections for staff ${staff.id}: ${staff.name}`);
+                    const collectionsResponse = await axios.get(
+                        `http://localhost:8082/api/waste/collections/collector/${staff.id}`
+                    );
 
-            if (collectionsResponse.data && Array.isArray(collectionsResponse.data)) {
-                setCollections(collectionsResponse.data);
-            } else {
-                console.warn('Unexpected collections response format:', collectionsResponse.data);
-                setCollections([]);
-            }
+                    if (collectionsResponse.data && Array.isArray(collectionsResponse.data)) {
+                        // Add staff info to each collection
+                        const collectionsWithStaff = collectionsResponse.data.map(collection => ({
+                            ...collection,
+                            collector: {
+                                id: staff.id,
+                                name: staff.name,
+                                email: staff.email
+                            }
+                        }));
+
+                        console.log(`✅ Found ${collectionsWithStaff.length} collections for ${staff.name}`);
+                        return collectionsWithStaff;
+                    }
+                    return [];
+                } catch (error) {
+                    console.error(`❌ Error fetching collections for staff ${staff.id}:`, error);
+                    return [];
+                }
+            });
+
+            // Wait for all staff collections to be fetched
+            const staffCollectionsArrays = await Promise.all(staffPromises);
+
+            // Flatten all collections
+            const allFetchedCollections = staffCollectionsArrays.flat();
+
+            // Filter by date range
+            const filteredCollections = allFetchedCollections.filter(collection => {
+                if (!collection.collectionTime) return false;
+
+                const collectionDate = new Date(collection.collectionTime).toISOString().split('T')[0];
+                const isInRange = collectionDate >= dateRange.start && collectionDate <= dateRange.end;
+
+                return isInRange;
+            });
+
+            console.log('📊 Final filtered collections:', filteredCollections.length);
+            setCollections(filteredCollections);
 
         } catch (error) {
-            console.error('Error fetching collection data:', error);
-
-            // Fallback: Try to get collections from staff members
-            try {
-                const staffResponse = await axios.get('http://localhost:8082/api/auth/users/role/ROLE_STAFF');
-                const staffMembers = staffResponse.data || [];
-
-                const allCollections = [];
-                for (const staff of staffMembers.slice(0, 5)) { // Limit to prevent too many requests
-                    try {
-                        const staffCollections = await axios.get(
-                            `http://localhost:8082/api/waste/collections/collector/${staff.id}`
-                        );
-                        if (staffCollections.data && Array.isArray(staffCollections.data)) {
-                            // Filter by date range
-                            const filteredCollections = staffCollections.data.filter(collection => {
-                                const collectionDate = new Date(collection.collectionTime).toISOString().split('T')[0];
-                                return collectionDate >= dateRange.start && collectionDate <= dateRange.end;
-                            });
-                            allCollections.push(...filteredCollections);
-                        }
-                    } catch (staffError) {
-                        console.error(`Error fetching collections for staff ${staff.id}:`, staffError);
-                    }
-                }
-
-                setCollections(allCollections);
-            } catch (fallbackError) {
-                console.error('Fallback approach failed:', fallbackError);
-                toast.error('Failed to load collection data');
-                setCollections([]);
-            }
+            console.error('❌ Error fetching collection data:', error);
+            toast.error('Failed to load collection data');
+            setCollections([]);
         } finally {
             setLoading(false);
         }
@@ -75,11 +87,21 @@ const CollectionReports = ({ user }) => {
         const totalCollections = collections.length;
         const totalWeight = collections.reduce((sum, coll) => sum + (coll.weight || 0), 0);
         const totalRevenue = collections.reduce((sum, coll) => sum + (coll.calculatedCharge || 0), 0);
+        const totalRecyclingWeight = collections.reduce((sum, coll) => sum + (coll.recyclableWeight || 0), 0);
+        const totalRefunds = collections.reduce((sum, coll) => sum + (coll.refundAmount || 0), 0);
         const avgWeight = totalCollections > 0 ? totalWeight / totalCollections : 0;
 
-        return { totalCollections, totalWeight, totalRevenue, avgWeight };
+        return {
+            totalCollections,
+            totalWeight,
+            totalRevenue,
+            avgWeight,
+            totalRecyclingWeight,
+            totalRefunds
+        };
     };
-    const { totalCollections, totalWeight, totalRevenue, avgWeight } = calculateMetrics();
+
+    const { totalCollections, totalWeight, totalRevenue, avgWeight, totalRecyclingWeight, totalRefunds } = calculateMetrics();
 
     const getTopCollectors = () => {
         const collectorMap = new Map();
@@ -94,7 +116,9 @@ const CollectionReports = ({ user }) => {
                         name: collectorName,
                         collections: 0,
                         totalWeight: 0,
-                        totalRevenue: 0
+                        totalRevenue: 0,
+                        recyclingWeight: 0,
+                        refunds: 0
                     });
                 }
 
@@ -102,12 +126,121 @@ const CollectionReports = ({ user }) => {
                 collectorData.collections += 1;
                 collectorData.totalWeight += collection.weight || 0;
                 collectorData.totalRevenue += collection.calculatedCharge || 0;
+                collectorData.recyclingWeight += collection.recyclableWeight || 0;
+                collectorData.refunds += collection.refundAmount || 0;
             }
         });
 
         return Array.from(collectorMap.values())
             .sort((a, b) => b.collections - a.collections)
             .slice(0, 5);
+    };
+
+    const getCollectionTrends = () => {
+        const dailyStats = {};
+
+        collections.forEach(collection => {
+            if (collection.collectionTime) {
+                const date = new Date(collection.collectionTime).toDateString();
+                if (!dailyStats[date]) {
+                    dailyStats[date] = {
+                        date,
+                        collections: 0,
+                        weight: 0,
+                        revenue: 0
+                    };
+                }
+                dailyStats[date].collections += 1;
+                dailyStats[date].weight += collection.weight || 0;
+                dailyStats[date].revenue += collection.calculatedCharge || 0;
+            }
+        });
+
+        return Object.values(dailyStats)
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .slice(0, 7); // Last 7 days
+    };
+
+    const exportToCSV = () => {
+        const csvData = [
+            ['Collection ID', 'Bin ID', 'Location', 'Collector', 'Weight (kg)', 'Charge ($)', 'Recycling Weight', 'Refund ($)', 'Collection Time'],
+            ...collections.map(collection => [
+                collection.id || 'N/A',
+                collection.binId || 'N/A',
+                collection.location || 'N/A',
+                collection.collector?.name || 'Unknown',
+                collection.weight || 0,
+                collection.calculatedCharge || 0,
+                collection.recyclableWeight || 0,
+                collection.refundAmount || 0,
+                new Date(collection.collectionTime).toLocaleString()
+            ])
+        ];
+
+        const csvContent = csvData.map(row => row.join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `collection_report_${dateRange.start}_to_${dateRange.end}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        toast.success('Collection report exported as CSV!');
+    };
+
+    const exportPerformanceReport = () => {
+        const topCollectors = getTopCollectors();
+        const csvData = [
+            ['Rank', 'Collector Name', 'Collections', 'Total Weight (kg)', 'Total Revenue ($)', 'Recycling Weight (kg)', 'Refunds ($)'],
+            ...topCollectors.map((collector, index) => [
+                index + 1,
+                collector.name,
+                collector.collections,
+                collector.totalWeight.toFixed(2),
+                collector.totalRevenue.toFixed(2),
+                collector.recyclingWeight.toFixed(2),
+                collector.refunds.toFixed(2)
+            ])
+        ];
+
+        const csvContent = csvData.map(row => row.join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `collector_performance_${dateRange.start}_to_${dateRange.end}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        toast.success('Performance report exported!');
+    };
+
+    const getPeakDay = () => {
+        const dayCount = {};
+        collections.forEach(collection => {
+            if (collection.collectionTime) {
+                const day = new Date(collection.collectionTime).toLocaleDateString('en-US', { weekday: 'long' });
+                dayCount[day] = (dayCount[day] || 0) + 1;
+            }
+        });
+
+        return Object.entries(dayCount).sort((a, b) => b[1] - a[1])[0]?.[0] || 'No data';
+    };
+
+    const getMostActiveArea = () => {
+        const areaCount = {};
+        collections.forEach(collection => {
+            if (collection.location) {
+                areaCount[collection.location] = (areaCount[collection.location] || 0) + 1;
+            }
+        });
+
+        return Object.entries(areaCount).sort((a, b) => b[1] - a[1])[0]?.[0] || 'No data';
     };
 
     if (loading) {
@@ -122,8 +255,15 @@ const CollectionReports = ({ user }) => {
     return (
         <div className="collection-reports">
             <div className="page-header">
-                <h1>Collection Reports</h1>
+                <h1>📊 Collection Reports</h1>
                 <p>Monitor collection performance and generate insights</p>
+                <button
+                    onClick={fetchCollectionData}
+                    className="btn btn-secondary"
+                    disabled={loading}
+                >
+                    {loading ? 'Refreshing...' : '🔄 Refresh Data'}
+                </button>
             </div>
 
             {/* Date Range Filter */}
@@ -147,9 +287,9 @@ const CollectionReports = ({ user }) => {
                     />
                 </div>
                 <div className="filter-group">
-                    <button onClick={fetchCollectionData} className="btn btn-primary">
-                        Apply Filter
-                    </button>
+                    <span className="results-count">
+                        {collections.length} collections in selected period
+                    </span>
                 </div>
             </div>
 
@@ -189,12 +329,12 @@ const CollectionReports = ({ user }) => {
                 </div>
 
                 <div className="stat-card info">
-                    <div className="stat-icon">👷</div>
+                    <div className="stat-icon">♻️</div>
                     <div className="stat-content">
-                        <div className="stat-value">{new Set(collections.map(c => c.collector?.id)).size}</div>
-                        <div className="stat-title">Active Staff</div>
+                        <div className="stat-value">{totalRecyclingWeight.toFixed(1)} kg</div>
+                        <div className="stat-title">Recycling</div>
                         <div className="stat-breakdown">
-                            Involved in collections
+                            ${totalRefunds.toFixed(2)} refunded
                         </div>
                     </div>
                 </div>
@@ -204,8 +344,8 @@ const CollectionReports = ({ user }) => {
                 {/* Top Collectors */}
                 <div className="card">
                     <div className="card-header">
-                        <h3>Top Collectors</h3>
-                        <span className="badge">Performance</span>
+                        <h3>🏆 Top Collectors</h3>
+                        <span className="badge">Performance Ranking</span>
                     </div>
                     <div className="collectors-list">
                         {getTopCollectors().map((collector, index) => (
@@ -218,9 +358,12 @@ const CollectionReports = ({ user }) => {
                                 <div className="collector-info">
                                     <strong>{collector.name}</strong>
                                     <div className="collector-stats">
-                                        <span>{collector.collections} collections</span>
-                                        <span>{collector.totalWeight.toFixed(1)} kg</span>
-                                        <span>${collector.totalRevenue.toFixed(2)}</span>
+                                        <span>📦 {collector.collections} collections</span>
+                                        <span>⚖️ {collector.totalWeight.toFixed(1)} kg</span>
+                                        <span>💰 ${collector.totalRevenue.toFixed(2)}</span>
+                                        {collector.recyclingWeight > 0 && (
+                                            <span>♻️ {collector.recyclingWeight.toFixed(1)} kg</span>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="collector-performance">
@@ -234,13 +377,18 @@ const CollectionReports = ({ user }) => {
                                 </div>
                             </div>
                         ))}
+                        {getTopCollectors().length === 0 && (
+                            <div className="empty-state">
+                                <p>No collection data available for the selected period</p>
+                            </div>
+                        )}
                     </div>
                 </div>
 
                 {/* Recent Collections */}
                 <div className="card">
                     <div className="card-header">
-                        <h3>Recent Collections</h3>
+                        <h3>📋 Recent Collections</h3>
                         <span className="badge">{collections.length} total</span>
                     </div>
                     <div className="collections-list">
@@ -253,6 +401,11 @@ const CollectionReports = ({ user }) => {
                                         By {collection.collector?.name || 'Unknown Staff'} •
                                         {new Date(collection.collectionTime).toLocaleDateString()}
                                     </small>
+                                    {collection.recyclableItemsCount > 0 && (
+                                        <small className="recycling-badge">
+                                            ♻️ {collection.recyclableItemsCount} recyclables
+                                        </small>
+                                    )}
                                 </div>
                                 <div className="collection-details">
                                     <span className="weight">{collection.weight} kg</span>
@@ -260,28 +413,33 @@ const CollectionReports = ({ user }) => {
                                 </div>
                             </div>
                         ))}
+                        {collections.length === 0 && (
+                            <div className="empty-state">
+                                <p>No collections found for the selected period</p>
+                            </div>
+                        )}
                     </div>
                 </div>
 
                 {/* Export Options */}
                 <div className="card">
                     <div className="card-header">
-                        <h3>Export Reports</h3>
+                        <h3>📤 Export Reports</h3>
                     </div>
                     <div className="export-options">
-                        <button className="export-btn">
+                        <button className="export-btn" onClick={exportToCSV}>
                             <span className="export-icon">📊</span>
                             Export Collection Data (CSV)
                         </button>
-                        <button className="export-btn">
+                        <button className="export-btn" onClick={exportPerformanceReport}>
+                            <span className="export-icon">👷</span>
+                            Export Staff Performance (CSV)
+                        </button>
+                        <button className="export-btn" onClick={() => toast.info('PDF export coming soon!')}>
                             <span className="export-icon">💰</span>
                             Export Revenue Report (PDF)
                         </button>
-                        <button className="export-btn">
-                            <span className="export-icon">👷</span>
-                            Export Staff Performance
-                        </button>
-                        <button className="export-btn">
+                        <button className="export-btn" onClick={() => toast.info('Analytics report coming soon!')}>
                             <span className="export-icon">📈</span>
                             Generate Analytics Report
                         </button>
@@ -291,32 +449,62 @@ const CollectionReports = ({ user }) => {
                 {/* Collection Trends */}
                 <div className="card">
                     <div className="card-header">
-                        <h3>Collection Trends</h3>
+                        <h3>📈 Collection Trends</h3>
                     </div>
-                    <div className="trends-placeholder">
-                        <div className="trend-chart">
-                            <div className="chart-placeholder">
-                                <p>📈 Collection Analytics Chart</p>
-                                <small>Weight trends, revenue patterns, and performance metrics would be displayed here</small>
-                            </div>
-                        </div>
+                    <div className="trends-content">
                         <div className="trend-stats">
                             <div className="trend-stat">
                                 <span className="trend-label">Peak Collection Day</span>
-                                <span className="trend-value">Monday</span>
+                                <span className="trend-value">{getPeakDay()}</span>
                             </div>
                             <div className="trend-stat">
                                 <span className="trend-label">Avg Daily Collections</span>
-                                <span className="trend-value">{(totalCollections / 30).toFixed(1)}</span>
+                                <span className="trend-value">
+                                    {totalCollections > 0 ? (totalCollections / 30).toFixed(1) : 0}
+                                </span>
                             </div>
                             <div className="trend-stat">
                                 <span className="trend-label">Most Active Area</span>
-                                <span className="trend-value">Downtown</span>
+                                <span className="trend-value">{getMostActiveArea()}</span>
                             </div>
+                            <div className="trend-stat">
+                                <span className="trend-label">Recycling Rate</span>
+                                <span className="trend-value">
+                                    {totalWeight > 0 ? ((totalRecyclingWeight / totalWeight) * 100).toFixed(1) : 0}%
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Recent Daily Stats */}
+                        <div className="daily-trends">
+                            <h4>Last 7 Days Activity</h4>
+                            {getCollectionTrends().map((day, index) => (
+                                <div key={index} className="daily-stat">
+                                    <span className="day">{new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                                    <div className="day-bar">
+                                        <div
+                                            className="day-fill"
+                                            style={{ width: `${(day.collections / Math.max(...getCollectionTrends().map(d => d.collections))) * 100}%` }}
+                                        ></div>
+                                    </div>
+                                    <span className="day-count">{day.collections} collections</span>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
             </div>
+
+            {/* Debug Info - Remove in production */}
+            {process.env.NODE_ENV === 'development' && collections.length > 0 && (
+                <div className="card debug-info">
+                    <h4>🔧 Debug Information</h4>
+                    <details>
+                        <summary>Show sample collection data ({collections.length} total)</summary>
+                        <pre>{JSON.stringify(collections.slice(0, 2), null, 2)}</pre>
+                    </details>
+                </div>
+            )}
         </div>
     );
 };
