@@ -2563,3 +2563,25 @@ input[type="number"]::-webkit-inner-spin-button {
         grid-template-columns: 1fr;
     }
 }
+/* Add to your existing CSS */
+.offline-badge {
+    background: #f59e0b;
+    color: white;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 12px;
+    margin-left: auto;
+    font-weight: 600;
+}
+
+.nav-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+}
+
+/* Optional: Add specific styling for offline mode link */
+.nav-link[href*="scan-offline"] {
+    border-left: 3px solid #f59e0b;
+}

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
 
 const StaffCollections = ({ user }) => {
     const [collections, setCollections] = useState([]);
@@ -11,23 +12,55 @@ const StaffCollections = ({ user }) => {
         end: new Date().toISOString().split('T')[0]
     });
     const [loading, setLoading] = useState(true);
+    const [exporting, setExporting] = useState(false);
 
     useEffect(() => {
         fetchCollections();
     }, [user.id]);
 
-    // 🎯 ADD THIS FUNCTION: Normalize collection data from backend
+    // 🎯 UPDATED: Enhanced normalization to handle different backend response structures
     const normalizeCollection = (collection) => {
         console.log('🔄 Normalizing collection:', collection.id);
 
+        // Handle different possible field names for bin information
+        let binId = '';
+        let location = '';
+
+        // Check various possible structures for bin data
+        if (collection.wasteBin) {
+            binId = collection.wasteBin.binId || collection.wasteBin.id || '';
+            location = collection.wasteBin.location || '';
+        } else if (collection.bin) {
+            binId = collection.bin.binId || collection.bin.id || '';
+            location = collection.bin.location || '';
+        } else if (collection.binId) {
+            // If bin data is flattened
+            binId = collection.binId;
+            location = collection.location || '';
+        }
+
+        // Handle different possible field names for financial data
+        const calculatedCharge = collection.charge || collection.calculatedCharge || collection.totalCharge || 0;
+        const recyclingRefund = collection.recyclingRefund || collection.refundAmount || collection.recyclingCredit || 0;
+        const finalAmount = collection.finalAmount || collection.totalAmount || collection.netAmount ||
+            (calculatedCharge - recyclingRefund);
+
         return {
             ...collection,
-            // Map backend fields to frontend expected fields
-            calculatedCharge: collection.charge || collection.calculatedCharge || 0,
-            recyclingRefund: collection.recyclingRefund || collection.refundAmount || 0,
-            finalAmount: collection.finalAmount || collection.totalAmount || 0,
+            // Bin information
+            binId,
+            location,
+            wasteBin: collection.wasteBin || collection.bin || {
+                binId,
+                location
+            },
+            // Financial data
+            calculatedCharge,
+            recyclingRefund,
+            finalAmount,
             // Ensure all required fields have values
-            weight: collection.weight || 0
+            weight: collection.weight || 0,
+            collectionTime: collection.collectionTime || collection.createdAt || collection.timestamp
         };
     };
 
@@ -36,20 +69,8 @@ const StaffCollections = ({ user }) => {
             console.log('🔄 Fetching collections for staff:', user.id);
             const response = await axios.get(`http://localhost:8082/api/waste/collections/collector/${user.id}`);
 
-            // 🎯 NORMALIZE the collection data
+            // 🎯 ENHANCED NORMALIZATION with better error handling
             const normalizedCollections = (response.data || []).map(normalizeCollection);
-
-            // 🔍 DEBUG: Log collection data for verification
-            if (normalizedCollections.length > 0) {
-                console.log('📊 First collection after normalization:', {
-                    id: normalizedCollections[0].id,
-                    weight: normalizedCollections[0].weight,
-                    calculatedCharge: normalizedCollections[0].calculatedCharge,
-                    recyclingRefund: normalizedCollections[0].recyclingRefund,
-                    finalAmount: normalizedCollections[0].finalAmount
-                });
-            }
-
             setCollections(normalizedCollections);
         } catch (error) {
             console.error('Error fetching collections:', error);
@@ -57,6 +78,82 @@ const StaffCollections = ({ user }) => {
             toast.error('Failed to load collection history');
         } finally {
             setLoading(false);
+        }
+    };
+
+    // 🎯 NEW: Export to Excel function
+    const exportToExcel = () => {
+        setExporting(true);
+        try {
+            // Prepare data for export
+            const exportData = filteredCollections.map(collection => ({
+                'Date': new Date(collection.collectionTime).toLocaleDateString(),
+                'Time': new Date(collection.collectionTime).toLocaleTimeString(),
+                'Bin ID': collection.binId || collection.wasteBin?.binId || 'N/A',
+                'Location': collection.location || collection.wasteBin?.location || 'Unknown',
+                'Weight (kg)': collection.weight,
+                'Charge ($)': collection.calculatedCharge?.toFixed(2),
+                'Recycling Refund ($)': collection.recyclingRefund?.toFixed(2),
+                'Net Amount ($)': ((collection.calculatedCharge || 0) - (collection.recyclingRefund || 0)).toFixed(2),
+                'Status': 'Completed',
+                'Truck ID': collection.truckId || 'N/A',
+                'Notes': collection.notes || ''
+            }));
+
+            // Create workbook and worksheet
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(exportData);
+
+            // Add worksheet to workbook
+            XLSX.utils.book_append_sheet(wb, ws, 'Collection Records');
+
+            // Generate filename with date
+            const filename = `collections_report_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+            // Export to Excel
+            XLSX.writeFile(wb, filename);
+            toast.success('Report downloaded successfully!');
+        } catch (error) {
+            console.error('Error exporting to Excel:', error);
+            toast.error('Failed to download report');
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    // 🎯 NEW: Export to PDF function
+    const exportToPDF = () => {
+        toast.success('PDF export feature coming soon!');
+        // You can implement PDF export using libraries like jspdf or pdfmake
+    };
+
+    // 🎯 NEW: Export summary statistics
+    const exportSummaryReport = () => {
+        setExporting(true);
+        try {
+            const summaryData = [{
+                'Report Period': `${dateRange.start} to ${dateRange.end}`,
+                'Total Collections': filteredCollections.length,
+                'Total Weight (kg)': getTotalWeight().toFixed(1),
+                'Total Revenue ($)': getTotalRevenue().toFixed(2),
+                'Total Recycling Refunds ($)': getTotalRecyclingRefunds().toFixed(2),
+                'Net Revenue ($)': getNetRevenue().toFixed(2),
+                'Average Weight per Collection (kg)': getPerformanceMetrics().avgWeight.toFixed(1),
+                'Collections with Recycling': getCollectionsWithRecycling().length,
+                'Generated By': user.name,
+                'Generated On': new Date().toLocaleString()
+            }];
+
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(wb, ws, 'Summary Report');
+            XLSX.writeFile(wb, `collections_summary_${new Date().toISOString().split('T')[0]}.xlsx`);
+            toast.success('Summary report downloaded!');
+        } catch (error) {
+            console.error('Error exporting summary:', error);
+            toast.error('Failed to download summary report');
+        } finally {
+            setExporting(false);
         }
     };
 
@@ -73,6 +170,10 @@ const StaffCollections = ({ user }) => {
             return collectionDate >= weekAgo;
         }
         return true;
+    }).filter(collection => {
+        // Apply date range filter
+        const collectionDate = new Date(collection.collectionTime).toISOString().split('T')[0];
+        return collectionDate >= dateRange.start && collectionDate <= dateRange.end;
     });
 
     // 🎯 UPDATED: Enhanced statistics calculations
@@ -133,6 +234,23 @@ const StaffCollections = ({ user }) => {
                     <span className="collection-count">
                         {collections.length} total collections
                     </span>
+                    {/* 🎯 NEW: Export buttons */}
+                    <div className="export-buttons">
+                        <button
+                            onClick={exportToExcel}
+                            disabled={exporting || filteredCollections.length === 0}
+                            className="btn btn-success btn-sm"
+                        >
+                            {exporting ? 'Exporting...' : '📊 Export Excel'}
+                        </button>
+                        <button
+                            onClick={exportSummaryReport}
+                            disabled={exporting}
+                            className="btn btn-info btn-sm"
+                        >
+                            📈 Summary Report
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -221,7 +339,7 @@ const StaffCollections = ({ user }) => {
                 </div>
             </div>
 
-            {/* 🎯 UPDATED: Enhanced Collections Table */}
+            {/* 🎯 UPDATED: Enhanced Collections Table with better bin data handling */}
             <div className="card">
                 <div className="card-header">
                     <h3>Collection Records</h3>
@@ -267,9 +385,23 @@ const StaffCollections = ({ user }) => {
                                         </div>
                                     </td>
                                     <td>
-                                        <strong>{collection.wasteBin?.binId}</strong>
+                                        {/* 🎯 FIXED: Multiple ways to access bin ID */}
+                                        <strong className="bin-id">
+                                            {collection.binId ||
+                                                collection.wasteBin?.binId ||
+                                                collection.bin?.binId ||
+                                                'N/A'}
+                                        </strong>
                                     </td>
-                                    <td>{collection.wasteBin?.location}</td>
+                                    <td>
+                                        {/* 🎯 FIXED: Multiple ways to access location */}
+                                        <span className="location-text">
+                                            {collection.location ||
+                                                collection.wasteBin?.location ||
+                                                collection.bin?.location ||
+                                                'Unknown Location'}
+                                        </span>
+                                    </td>
                                     <td>
                                         <span className="weight-badge">
                                             {collection.weight} kg
@@ -313,9 +445,6 @@ const StaffCollections = ({ user }) => {
                     </div>
                 )}
             </div>
-
-
-
         </div>
     );
 };
