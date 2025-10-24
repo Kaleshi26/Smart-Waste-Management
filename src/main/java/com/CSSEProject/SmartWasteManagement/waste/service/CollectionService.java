@@ -57,12 +57,11 @@ public class CollectionService {
     private InvoiceService invoiceService;
 
     private final Map<QualityGrade, Double> qualityRefundRates = Map.of(
-            QualityGrade.EXCELLENT, 8.0,  // Rs. 8/kg for excellent quality
-            QualityGrade.GOOD, 6.0,       // Rs. 6/kg for good quality
-            QualityGrade.AVERAGE, 4.0,    // Rs. 4/kg for average quality
-            QualityGrade.POOR, 2.0        // Rs. 2/kg for poor quality
+            QualityGrade.EXCELLENT, 0.8,  // $0.8/kg for excellent quality
+            QualityGrade.GOOD, 0.6,       // $0.6/kg for good quality
+            QualityGrade.AVERAGE, 0.4,    // $0.4/kg for average quality
+            QualityGrade.POOR, 0.2        // $0.2/kg for poor quality
     );
-
     // FIXED: Enhanced method with proper error handling
     public List<CollectionEvent> getCollectionsByCollector(Long collectorId) {
         try {
@@ -127,19 +126,20 @@ public class CollectionService {
     }
 
     // In CollectionService.java - Fix the invoice generation
+// FIXED: Proper invoice generation with correct amounts
     private Invoice generateInvoiceAfterCollection(User resident, Double charge, Double weight,
                                                    BinType binType, Double refundAmount, Double recyclableWeight) {
         try {
-            System.out.println("🧾 AUTO-GENERATING INVOICE WITH REFUNDS");
+            System.out.println("🧾 AUTO-GENERATING INVOICE WITH CORRECT CALCULATIONS");
             System.out.println("   - Resident: " + resident.getName());
-            System.out.println("   - Charge: Rs." + charge);
-            System.out.println("   - Refund: Rs." + refundAmount);
+            System.out.println("   - Charge: $" + charge);
+            System.out.println("   - Refund: $" + refundAmount);
 
             // Calculate final amount properly
             Double finalAmount = Math.max(0.0, charge - (refundAmount != null ? refundAmount : 0.0));
-            System.out.println("   - Final: Rs." + finalAmount);
+            System.out.println("   - Final: $" + finalAmount);
 
-            // Create invoice with refund support
+            // Create invoice with proper amounts
             Invoice invoice = new Invoice();
             invoice.setResident(resident);
             invoice.setInvoiceNumber("INV-AUTO-" + System.currentTimeMillis());
@@ -147,18 +147,17 @@ public class CollectionService {
             invoice.setDueDate(LocalDate.now().plusDays(30));
             invoice.setPeriodStart(LocalDate.now());
             invoice.setPeriodEnd(LocalDate.now());
-            invoice.setBaseCharge(0.0);
-            invoice.setWeightBasedCharge(charge);
+
+            // FIXED: Set proper charge breakdown
+            invoice.setBaseCharge(0.0); // No base charge for single collections
+            invoice.setWeightBasedCharge(charge); // This is the main charge
             invoice.setRecyclingCredits(refundAmount != null ? refundAmount : 0.0);
             invoice.setRefundAmount(refundAmount != null ? refundAmount : 0.0);
             invoice.setRecyclableWeight(recyclableWeight != null ? recyclableWeight : 0.0);
 
-            // FIXED: Set totalAmount to the charge (before refunds)
-            invoice.setTotalAmount(charge);
-
-            // FIXED: Set finalAmount to charge - refund
-            invoice.setFinalAmount(finalAmount);
-
+            // FIXED: Correct total and final amounts
+            invoice.setTotalAmount(charge); // Total before refunds
+            invoice.setFinalAmount(finalAmount); // Final after refunds
             invoice.setStatus(InvoiceStatus.PENDING);
 
             // Manually trigger calculation to ensure it's correct
@@ -167,9 +166,9 @@ public class CollectionService {
             Invoice savedInvoice = invoiceRepository.save(invoice);
 
             System.out.println("✅ AUTO-INVOICE GENERATED: " + savedInvoice.getInvoiceNumber());
-            System.out.println("   - Total Amount: Rs." + savedInvoice.getTotalAmount());
-            System.out.println("   - Refund Applied: Rs." + savedInvoice.getRefundAmount());
-            System.out.println("   - Final Amount: Rs." + savedInvoice.getFinalAmount());
+            System.out.println("   - Total Amount: $" + savedInvoice.getTotalAmount());
+            System.out.println("   - Refund Applied: $" + savedInvoice.getRefundAmount());
+            System.out.println("   - Final Amount: $" + savedInvoice.getFinalAmount());
 
             return savedInvoice;
 
@@ -178,7 +177,6 @@ public class CollectionService {
             return null;
         }
     }
-
     // NEW: Link recycling collections to invoice
     private void linkRecyclingToInvoice(List<RecyclingCollection> recyclingCollections, Invoice invoice) {
         for (RecyclingCollection recycling : recyclingCollections) {
@@ -538,4 +536,5 @@ public class CollectionService {
             public final String residentName = bin.getResident() != null ? bin.getResident().getName() : "Unassigned";
         };
     }
+
 }

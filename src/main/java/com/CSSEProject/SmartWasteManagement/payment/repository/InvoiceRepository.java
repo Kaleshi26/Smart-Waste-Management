@@ -7,13 +7,14 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     List<Invoice> findByResidentId(Long residentId);
     List<Invoice> findByStatus(InvoiceStatus status);
     List<Invoice> findByDueDateBeforeAndStatus(LocalDate dueDate, InvoiceStatus status);
-    
+    Optional<Invoice> findByInvoiceNumber(String invoiceNumber);
     @Query("SELECT i FROM Invoice i WHERE i.periodStart <= ?1 AND i.periodEnd >= ?1 AND i.resident.id = ?2")
     List<Invoice> findInvoicesForDate(LocalDate date, Long residentId);
     

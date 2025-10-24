@@ -1,4 +1,3 @@
-// File: backend/src/main/java/com/CSSEProject/SmartWasteManagement/payment/entity/Invoice.java
 package com.CSSEProject.SmartWasteManagement.payment.entity;
 
 import com.CSSEProject.SmartWasteManagement.user.entity.User;
@@ -63,6 +62,13 @@ public class Invoice {
     // Final amount after refunds
     @Column(nullable = false)
     private Double finalAmount = 0.0;
+
+    // 🆕 NEW PAYMENT FIELDS
+    private LocalDate paymentDate;
+
+    private String paymentMethod;
+
+    private String paymentReference;
 
     // Relationships
     @ManyToOne(fetch = FetchType.LAZY)

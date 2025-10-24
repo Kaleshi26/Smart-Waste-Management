@@ -7,15 +7,51 @@ const Invoices = ({ user }) => {
     const [loading, setLoading] = useState(true);
     const [selectedInvoice, setSelectedInvoice] = useState(null);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
-    const [paymentMethod, setPaymentMethod] = useState('CREDIT_CARD');
     const [processingPayment, setProcessingPayment] = useState(false);
-    // NEW: State for invoice details modal
     const [showDetailsModal, setShowDetailsModal] = useState(false);
     const [detailedInvoice, setDetailedInvoice] = useState(null);
+    const [autoRefresh, setAutoRefresh] = useState(false);
 
     useEffect(() => {
         fetchInvoices();
-    }, [user.id]);
+
+        // Set up auto-refresh when component mounts
+        const interval = setInterval(() => {
+            if (autoRefresh) {
+                fetchInvoices();
+            }
+        }, 3000); // Check every 3 seconds
+
+        return () => clearInterval(interval);
+    }, [user.id, autoRefresh]);
+
+    // Start auto-refresh when payment is processing
+    useEffect(() => {
+        if (processingPayment) {
+            setAutoRefresh(true);
+            // Stop auto-refresh after 2 minutes
+            const timeout = setTimeout(() => {
+                setAutoRefresh(false);
+            }, 120000);
+            return () => clearTimeout(timeout);
+        }
+    }, [processingPayment]);
+
+    // ADD THIS FUNCTION: Normalize invoice data from backend
+    const normalizeInvoice = (invoice) => {
+        console.log('🔄 Normalizing invoice:', invoice.invoiceNumber);
+
+        return {
+            ...invoice,
+            // Map backend fields to frontend expected fields
+            recyclingCredits: invoice.refundAmount || invoice.recyclingCredits || 0,
+            weightBasedCharge: invoice.weightBasedCharge || 0,
+            baseCharge: invoice.baseCharge || 0,
+            totalAmount: invoice.finalAmount || invoice.totalAmount || 0,
+            // Ensure all required fields have values
+            otherCharges: invoice.otherCharges || 0
+        };
+    };
 
     const fetchInvoices = async () => {
         try {
@@ -23,16 +59,34 @@ const Invoices = ({ user }) => {
             const response = await axios.get(`http://localhost:8082/api/invoices/resident/${user.id}`);
             console.log('✅ Raw API response:', response.data);
 
+            let invoicesData = [];
+
             if (Array.isArray(response.data)) {
-                console.log(`📋 Found ${response.data.length} invoices`);
-                setInvoices(response.data);
+                invoicesData = response.data;
             } else if (response.data && Array.isArray(response.data.invoices)) {
-                console.log(`📋 Found ${response.data.invoices.length} invoices in nested property`);
-                setInvoices(response.data.invoices);
+                invoicesData = response.data.invoices;
             } else {
                 console.log('❌ Unexpected response format:', response.data);
-                setInvoices([]);
+                invoicesData = [];
             }
+
+            // 🎯 NORMALIZE the invoice data
+            const normalizedInvoices = invoicesData.map(normalizeInvoice);
+
+            // Check if any invoice status changed to PAID
+            const previousInvoices = invoices;
+            if (previousInvoices.length > 0) {
+                normalizedInvoices.forEach(newInvoice => {
+                    const oldInvoice = previousInvoices.find(inv => inv.id === newInvoice.id);
+                    if (oldInvoice && oldInvoice.status === 'PENDING' && newInvoice.status === 'PAID') {
+                        toast.success(`Invoice ${newInvoice.invoiceNumber} has been paid! 🎉`);
+                        setAutoRefresh(false); // Stop auto-refresh once we see a payment
+                    }
+                });
+            }
+
+            setInvoices(normalizedInvoices);
+
         } catch (error) {
             console.error('❌ Error fetching invoices:', error);
             console.error('Error response:', error.response?.data);
@@ -52,7 +106,12 @@ const Invoices = ({ user }) => {
         }
     };
 
-    // NEW: View invoice details
+    const handleRefreshInvoices = async () => {
+        setLoading(true);
+        await fetchInvoices();
+        toast.success('Invoices refreshed!');
+    };
+
     const handleViewDetails = (invoice) => {
         setDetailedInvoice(invoice);
         setShowDetailsModal(true);
@@ -63,25 +122,76 @@ const Invoices = ({ user }) => {
         setShowPaymentModal(true);
     };
 
+    // NEW: PayHere Payment Integration
     const processPayment = async () => {
         if (!selectedInvoice) return;
 
         setProcessingPayment(true);
-        try {
-            const paymentData = {
-                paymentMethod: paymentMethod,
-                transactionId: `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-            };
+        setAutoRefresh(true); // Start auto-refresh when payment begins
 
-            await axios.post(`http://localhost:8082/api/invoices/${selectedInvoice.id}/pay`, paymentData);
-            toast.success('Payment processed successfully!');
-            setShowPaymentModal(false);
-            setSelectedInvoice(null);
-            fetchInvoices();
+        try {
+            console.log('🔄 Initiating PayHere payment for invoice:', selectedInvoice.id);
+            console.log('   - Invoice Number:', selectedInvoice.invoiceNumber);
+            console.log('   - Amount: $', selectedInvoice.totalAmount);
+
+            // CORRECTED ENDPOINT: Use /api/payhere/initiate
+            const response = await axios.post(`http://localhost:8082/api/payhere/initiate/${selectedInvoice.id}`);
+            const { checkoutUrl, paymentData } = response.data;
+
+            console.log('✅ PayHere payment data received:');
+            console.log('   - Checkout URL:', checkoutUrl);
+            console.log('   - Payment Data:', paymentData);
+
+            // DEBUG: Check if all required fields are present
+            const requiredFields = ['merchant_id', 'return_url', 'cancel_url', 'order_id', 'items', 'currency', 'amount', 'hash'];
+            const missingFields = requiredFields.filter(field => !paymentData[field]);
+
+            if (missingFields.length > 0) {
+                throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+            }
+
+            console.log('🔍 Payment Data Validation:');
+            console.log('   - Merchant ID:', paymentData.merchant_id);
+            console.log('   - Order ID:', paymentData.order_id);
+            console.log('   - Amount:', paymentData.amount);
+            console.log('   - Currency:', paymentData.currency);
+            console.log('   - Hash present:', !!paymentData.hash);
+
+            // Create hidden form for PayHere
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = checkoutUrl;
+            form.style.display = 'none';
+
+            // Add all payment parameters as hidden inputs
+            Object.keys(paymentData).forEach(key => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = key;
+                input.value = paymentData[key];
+                form.appendChild(input);
+            });
+
+            // Add form to page and submit
+            document.body.appendChild(form);
+            console.log('🚀 Redirecting to PayHere...');
+
+            // Show success message and instructions
+            toast.success('Redirecting to PayHere. Page will auto-refresh when payment is complete.');
+
+            form.submit();
+
         } catch (error) {
-            toast.error(error.response?.data?.error || 'Payment failed. Please try again.');
-        } finally {
+            console.error('❌ Payment initiation failed:', error);
+            console.error('Error details:', error.response?.data);
+
+            const errorMessage = error.response?.data?.error ||
+                error.message ||
+                'Payment initiation failed. Please try again.';
+
+            toast.error(errorMessage);
             setProcessingPayment(false);
+            setAutoRefresh(false);
         }
     };
 
@@ -104,10 +214,14 @@ const Invoices = ({ user }) => {
             .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
     };
 
-    // NEW: Calculate total recycling savings
     const calculateTotalRecyclingSavings = () => {
         return invoices.reduce((sum, inv) => sum + (inv.recyclingCredits || 0), 0);
     };
+
+    // Check if any payments are being processed
+    const hasPendingPayments = invoices.some(inv =>
+        inv.status === 'PENDING' && autoRefresh
+    );
 
     if (loading) {
         return (
@@ -124,13 +238,27 @@ const Invoices = ({ user }) => {
                 <div>
                     <h1>Billing & Invoices</h1>
                     <p>Manage your waste management bills and payments</p>
+                    {autoRefresh && (
+                        <div className="auto-refresh-indicator">
+                            <span className="refresh-dot"></span>
+                            Auto-refreshing for payment updates...
+                        </div>
+                    )}
                 </div>
                 <div className="header-actions">
                     <button
                         onClick={handleGenerateInvoice}
                         className="btn btn-primary"
+                        disabled={processingPayment}
                     >
                         Generate Monthly Invoice
+                    </button>
+                    <button
+                        onClick={handleRefreshInvoices}
+                        className="btn btn-secondary"
+                        disabled={loading}
+                    >
+                        {loading ? 'Refreshing...' : 'Refresh Invoices'}
                     </button>
                 </div>
             </div>
@@ -157,7 +285,6 @@ const Invoices = ({ user }) => {
                     <div className="stat-change">Outstanding balance</div>
                 </div>
 
-                {/* NEW: Recycling Savings Card */}
                 <div className="stat-card success">
                     <div className="stat-title">Recycling Savings</div>
                     <div className="stat-value">${calculateTotalRecyclingSavings().toFixed(2)}</div>
@@ -165,10 +292,30 @@ const Invoices = ({ user }) => {
                 </div>
             </div>
 
+            {/* Auto-refresh status */}
+            {autoRefresh && (
+                <div className="refresh-status">
+                    <div className="refresh-spinner"></div>
+                    <span>Waiting for payment confirmation... Auto-refreshing every 3 seconds</span>
+                    <button
+                        onClick={() => setAutoRefresh(false)}
+                        className="btn btn-sm btn-outline"
+                    >
+                        Stop Auto-refresh
+                    </button>
+                </div>
+            )}
+
             {/* Invoices Table */}
             <div className="card">
                 <div className="card-header">
                     <h3>Invoice History</h3>
+                    <div className="card-actions">
+                        <span className="text-muted">
+                            {invoices.filter(inv => inv.status === 'PAID').length} paid •
+                            {invoices.filter(inv => inv.status === 'PENDING').length} pending
+                        </span>
+                    </div>
                 </div>
 
                 {invoices.length > 0 ? (
@@ -190,15 +337,18 @@ const Invoices = ({ user }) => {
                             </thead>
                             <tbody>
                             {invoices.map((invoice) => (
-                                <tr key={invoice.id}>
+                                <tr key={invoice.id} className={invoice.status === 'PAID' ? 'row-paid' : ''}>
                                     <td>
                                         <strong>{invoice.invoiceNumber}</strong>
+                                        {invoice.status === 'PAID' && (
+                                            <span className="paid-badge">Paid</span>
+                                        )}
                                     </td>
                                     <td>{invoice.invoiceDate}</td>
                                     <td>
-                      <span className={new Date(invoice.dueDate) < new Date() && invoice.status === 'PENDING' ? 'text-danger' : ''}>
-                        {invoice.dueDate}
-                      </span>
+                                        <span className={new Date(invoice.dueDate) < new Date() && invoice.status === 'PENDING' ? 'text-danger' : ''}>
+                                            {invoice.dueDate}
+                                        </span>
                                     </td>
                                     <td>
                                         {invoice.periodStart} to {invoice.periodEnd}
@@ -206,7 +356,6 @@ const Invoices = ({ user }) => {
                                     <td>${(invoice.baseCharge || 0).toFixed(2)}</td>
                                     <td>${(invoice.weightBasedCharge || 0).toFixed(2)}</td>
                                     <td className="text-success">
-                                        {/* NEW: Enhanced recycling credits display */}
                                         <div className="recycling-credits-cell">
                                             <strong>-${(invoice.recyclingCredits || 0).toFixed(2)}</strong>
                                             {invoice.recyclingCredits > 0 && (
@@ -230,11 +379,12 @@ const Invoices = ({ user }) => {
                                                 <button
                                                     onClick={() => handlePayInvoice(invoice)}
                                                     className="btn btn-sm btn-primary"
+                                                    disabled={processingPayment}
                                                 >
-                                                    Pay Now
+                                                    {processingPayment ? 'Processing...' : 'Pay Now'}
                                                 </button>
                                             ) : invoice.status === 'PAID' ? (
-                                                <span className="text-success">Paid</span>
+                                                <span className="text-success">✅ Paid</span>
                                             ) : (
                                                 <span className="text-muted">No action</span>
                                             )}
@@ -262,7 +412,7 @@ const Invoices = ({ user }) => {
                 )}
             </div>
 
-            {/* NEW: Invoice Details Modal */}
+            {/* Invoice Details Modal */}
             {showDetailsModal && detailedInvoice && (
                 <div className="modal-overlay">
                     <div className="modal modal-lg">
@@ -318,7 +468,6 @@ const Invoices = ({ user }) => {
                                             <span>${(detailedInvoice.otherCharges || 0).toFixed(2)}</span>
                                         </div>
 
-                                        {/* NEW: Enhanced Recycling Credits Display */}
                                         <div className="charge-item text-success">
                                             <span>
                                                 <strong>Recycling Credits:</strong>
@@ -336,7 +485,6 @@ const Invoices = ({ user }) => {
                                     </div>
                                 </div>
 
-                                {/* NEW: Recycling Impact Section */}
                                 {detailedInvoice.recyclingCredits > 0 && (
                                     <div className="detail-section">
                                         <h4>♻️ Your Recycling Impact</h4>
@@ -366,7 +514,6 @@ const Invoices = ({ user }) => {
                                     </div>
                                 )}
 
-                                {/* Payment Information */}
                                 {detailedInvoice.status === 'PAID' && (
                                     <div className="detail-section">
                                         <h4>Payment Information</h4>
@@ -378,6 +525,12 @@ const Invoices = ({ user }) => {
                                             <span>Payment Method:</span>
                                             <span>{detailedInvoice.paymentMethod || 'N/A'}</span>
                                         </div>
+                                        {detailedInvoice.paymentReference && (
+                                            <div className="detail-item">
+                                                <span>Transaction ID:</span>
+                                                <span>{detailedInvoice.paymentReference}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -406,14 +559,17 @@ const Invoices = ({ user }) => {
                 </div>
             )}
 
-            {/* Payment Modal (Existing - No changes needed) */}
+            {/* Payment Modal */}
             {showPaymentModal && selectedInvoice && (
                 <div className="modal-overlay">
                     <div className="modal">
                         <div className="modal-header">
                             <h3>Pay Invoice #{selectedInvoice.invoiceNumber}</h3>
                             <button
-                                onClick={() => setShowPaymentModal(false)}
+                                onClick={() => {
+                                    setShowPaymentModal(false);
+                                    setAutoRefresh(false);
+                                }}
                                 className="btn btn-sm btn-secondary"
                                 disabled={processingPayment}
                             >
@@ -446,76 +602,24 @@ const Invoices = ({ user }) => {
                                 </div>
                             </div>
 
-                            <div className="payment-method">
-                                <h4>Select Payment Method</h4>
-                                <div className="payment-options">
-                                    <label className="payment-option">
-                                        <input
-                                            type="radio"
-                                            name="paymentMethod"
-                                            value="CREDIT_CARD"
-                                            checked={paymentMethod === 'CREDIT_CARD'}
-                                            onChange={(e) => setPaymentMethod(e.target.value)}
-                                        />
-                                        <div className="payment-option-content">
-                                            <div className="payment-icon">💳</div>
-                                            <div>
-                                                <strong>Credit Card</strong>
-                                                <p>Visa, MasterCard, American Express</p>
+                            <div className="payment-info">
+                                <div className="payment-info-card">
+                                    <div className="payment-icon">🔒</div>
+                                    <div className="payment-info-content">
+                                        <h5>Secure Payment via PayHere</h5>
+                                        <p>You will be redirected to PayHere's secure payment page to complete your transaction.</p>
+                                        <ul className="payment-features">
+                                            <li>✅ Secure SSL encryption</li>
+                                            <li>✅ Multiple payment options</li>
+                                            <li>✅ Instant confirmation</li>
+                                            <li>✅ Auto-refresh after payment</li>
+                                        </ul>
+                                        {autoRefresh && (
+                                            <div className="auto-refresh-note">
+                                                <small>✅ Page will auto-refresh to show payment status</small>
                                             </div>
-                                        </div>
-                                    </label>
-
-                                    <label className="payment-option">
-                                        <input
-                                            type="radio"
-                                            name="paymentMethod"
-                                            value="DEBIT_CARD"
-                                            checked={paymentMethod === 'DEBIT_CARD'}
-                                            onChange={(e) => setPaymentMethod(e.target.value)}
-                                        />
-                                        <div className="payment-option-content">
-                                            <div className="payment-icon">🏦</div>
-                                            <div>
-                                                <strong>Debit Card</strong>
-                                                <p>Direct bank payment</p>
-                                            </div>
-                                        </div>
-                                    </label>
-
-                                    <label className="payment-option">
-                                        <input
-                                            type="radio"
-                                            name="paymentMethod"
-                                            value="ONLINE_BANKING"
-                                            checked={paymentMethod === 'ONLINE_BANKING'}
-                                            onChange={(e) => setPaymentMethod(e.target.value)}
-                                        />
-                                        <div className="payment-option-content">
-                                            <div className="payment-icon">🌐</div>
-                                            <div>
-                                                <strong>Online Banking</strong>
-                                                <p>Internet banking transfer</p>
-                                            </div>
-                                        </div>
-                                    </label>
-
-                                    <label className="payment-option">
-                                        <input
-                                            type="radio"
-                                            name="paymentMethod"
-                                            value="MOBILE_WALLET"
-                                            checked={paymentMethod === 'MOBILE_WALLET'}
-                                            onChange={(e) => setPaymentMethod(e.target.value)}
-                                        />
-                                        <div className="payment-option-content">
-                                            <div className="payment-icon">📱</div>
-                                            <div>
-                                                <strong>Mobile Wallet</strong>
-                                                <p>Pay via mobile payment apps</p>
-                                            </div>
-                                        </div>
-                                    </label>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
@@ -525,8 +629,12 @@ const Invoices = ({ user }) => {
                                     disabled={processingPayment}
                                     className="btn btn-primary btn-block"
                                 >
-                                    {processingPayment ? 'Processing Payment...' : `Pay $${(selectedInvoice.totalAmount || 0).toFixed(2)}`}
+                                    {processingPayment ? 'Redirecting to PayHere...' : `Pay $${(selectedInvoice.totalAmount || 0).toFixed(2)}`}
                                 </button>
+                                <p className="payment-note">
+                                    By clicking "Pay", you will be redirected to PayHere to complete your payment securely.
+                                    The page will automatically update when your payment is confirmed.
+                                </p>
                             </div>
                         </div>
                     </div>

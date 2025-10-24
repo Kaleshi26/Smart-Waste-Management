@@ -1,6 +1,7 @@
 package com.CSSEProject.SmartWasteManagement.payment.controller;
 
 import com.CSSEProject.SmartWasteManagement.payment.entity.Invoice;
+import com.CSSEProject.SmartWasteManagement.payment.entity.InvoiceStatus;
 import com.CSSEProject.SmartWasteManagement.payment.service.InvoiceService;
 import com.CSSEProject.SmartWasteManagement.user.entity.User;
 import com.CSSEProject.SmartWasteManagement.user.service.UserService;
@@ -12,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -20,7 +22,6 @@ import java.util.Map;
 @RequestMapping("/api/invoices")
 @CrossOrigin(origins = "http://localhost:5173")
 public class InvoiceController {
-
 
     @Autowired
     private InvoiceService invoiceService;
@@ -32,7 +33,7 @@ public class InvoiceController {
     private CollectionEventRepository collectionEventRepository;
 
     @Autowired
-    private RecyclingCollectionRepository recyclingCollectionRepository; // FIXED: Use correct repository
+    private RecyclingCollectionRepository recyclingCollectionRepository;
 
     @GetMapping("/debug/resident/{residentId}")
     public ResponseEntity<?> debugResidentInvoiceData(@PathVariable Long residentId) {
@@ -40,7 +41,7 @@ public class InvoiceController {
             User resident = userService.getUserById(residentId);
 
             List<CollectionEvent> collections = collectionEventRepository.findUninvoicedByResident(residentId);
-            List<RecyclingCollection> recyclings = recyclingCollectionRepository.findUninvoicedByResident(residentId); // FIXED
+            List<RecyclingCollection> recyclings = recyclingCollectionRepository.findUninvoicedByResident(residentId);
 
             return ResponseEntity.ok(Map.of(
                     "resident", Map.of(
@@ -77,13 +78,12 @@ public class InvoiceController {
         }
     }
 
-
     @PostMapping("/generate/{residentId}")
     public ResponseEntity<?> generateMonthlyInvoice(@PathVariable Long residentId) {
         try {
             return ResponseEntity.ok(Map.of(
-                "message", "Invoice generated successfully",
-                "invoice", invoiceService.generateMonthlyInvoice(residentId)
+                    "message", "Invoice generated successfully",
+                    "invoice", invoiceService.generateMonthlyInvoice(residentId)
             ));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -95,10 +95,10 @@ public class InvoiceController {
         try {
             String paymentMethod = paymentInfo.get("paymentMethod");
             String transactionId = paymentInfo.get("transactionId");
-            
+
             return ResponseEntity.ok(Map.of(
-                "message", "Payment processed successfully",
-                "payment", invoiceService.processInvoicePayment(invoiceId, paymentMethod, transactionId)
+                    "message", "Payment processed successfully",
+                    "payment", invoiceService.processInvoicePayment(invoiceId, paymentMethod, transactionId)
             ));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -137,13 +137,30 @@ public class InvoiceController {
         try {
             LocalDate startDate = LocalDate.parse(start);
             LocalDate endDate = LocalDate.parse(end);
-            
+
             Double revenue = invoiceService.getTotalRevenueBetween(startDate, endDate);
             return ResponseEntity.ok(Map.of(
-                "totalRevenue", revenue != null ? revenue : 0.0,
-                "period", Map.of("start", start, "end", end)
+                    "totalRevenue", revenue != null ? revenue : 0.0,
+                    "period", Map.of("start", start, "end", end)
             ));
         } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // 🆕 NEW METHOD: Mark invoice as paid (for PayHere integration)
+    @PostMapping("/{invoiceNumber}/mark-paid")
+    public ResponseEntity<?> markInvoiceAsPaid(@PathVariable String invoiceNumber, @RequestBody Map<String, String> paymentData) {
+        try {
+            String paymentId = paymentData.get("paymentId");
+            invoiceService.markInvoiceAsPaid(invoiceNumber, paymentId);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Invoice marked as paid successfully",
+                    "invoiceNumber", invoiceNumber,
+                    "paymentReference", paymentId
+            ));
+        } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
