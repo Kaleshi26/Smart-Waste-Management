@@ -3,96 +3,186 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
 function ResidentDashboard({ user }) {
-  const [invoices, setInvoices] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+    const [invoices, setInvoices] = useState([]);
+    const [bins, setBins] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [activeTab, setActiveTab] = useState('invoices');
 
-  // Function to fetch invoices from the backend
-  const fetchInvoices = async () => {
-    setLoading(true);
-    try {
-      // We use the logged-in user's ID to fetch their specific invoices
-      const response = await axios.get(`http://localhost:8082/api/invoices/user/${user.id}`);
-      setInvoices(response.data);
-    } catch (err) {
-      setError('Could not fetch invoices.');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Fetch invoices
+    const fetchInvoices = async () => {
+        try {
+            const response = await axios.get(`http://localhost:8082/api/invoices/resident/${user.id}`);
+            setInvoices(response.data);
+        } catch (err) {
+            setError('Could not fetch invoices.');
+            console.error(err);
+        }
+    };
 
-  // useEffect runs this function once when the component is first displayed
-  useEffect(() => {
-    fetchInvoices();
-  }, [user.id]); // Dependency array ensures it re-runs if the user changes
+    // Fetch waste bins
+    const fetchBins = async () => {
+        try {
+            const response = await axios.get(`http://localhost:8082/api/waste/bins?residentId=${user.id}`);
+            setBins(response.data);
+        } catch (err) {
+            console.error('Could not fetch bins:', err);
+        }
+    };
 
-  // Function to handle the "Pay Now" button click
-  const handlePayInvoice = async (invoiceId) => {
-    try {
-      // Send a POST request to our payment simulation endpoint
-      await axios.post(`http://localhost:8082/api/invoices/pay/${invoiceId}`);
-      // After successful payment, refresh the invoice list to show the updated status
-      fetchInvoices();
-    } catch (err) {
-      alert('Payment failed: ' + (err.response?.data || 'Server error'));
-    }
-  };
+    useEffect(() => {
+        const loadData = async () => {
+            setLoading(true);
+            await Promise.all([fetchInvoices(), fetchBins()]);
+            setLoading(false);
+        };
+        loadData();
+    }, [user.id]);
 
-  return (
-    <div className="dashboard-container">
-      <h2 className="dashboard-title">My Invoices</h2>
-      <p className="dashboard-welcome">View your billing history and make payments.</p>
+    // Handle invoice payment
+    const handlePayInvoice = async (invoiceId) => {
+        try {
+            const paymentData = {
+                paymentMethod: "ONLINE",
+                transactionId: `TXN-${Date.now()}`
+            };
 
-      <div className="dashboard-card">
-        {loading && <p>Loading invoices...</p>}
-        {error && <p className="error-message">{error}</p>}
-        {!loading && !error && (
-          <table>
-            <thead>
-              <tr>
-                <th>Invoice Date</th>
-                <th>Due Date</th>
-                <th>Amount</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoices.length > 0 ? (
-                invoices.map((invoice) => (
-                  <tr key={invoice.id}>
-                    <td>{invoice.invoiceDate}</td>
-                    <td>{invoice.dueDate}</td>
-                    <td>${invoice.amount.toFixed(2)}</td>
-                    <td>
-                      <span className={`status-badge status-${invoice.status.toLowerCase()}`}>
-                        {invoice.status}
-                      </span>
-                    </td>
-                    <td>
-                      {invoice.status === 'UNPAID' && (
-                        <button
-                          onClick={() => handlePayInvoice(invoice.id)}
-                          className="pay-button"
-                        >
-                          Pay Now
+            await axios.post(`http://localhost:8082/api/invoices/${invoiceId}/pay`, paymentData);
+            await fetchInvoices(); // Refresh invoices
+            alert('Payment processed successfully!');
+        } catch (err) {
+            alert('Payment failed: ' + (err.response?.data?.error || 'Server error'));
+        }
+    };
+
+    // Generate new invoice
+    const handleGenerateInvoice = async () => {
+        try {
+            await axios.post(`http://localhost:8082/api/invoices/generate/${user.id}`);
+            await fetchInvoices();
+            alert('Invoice generated successfully!');
+        } catch (err) {
+            alert('Failed to generate invoice: ' + (err.response?.data?.error || 'Server error'));
+        }
+    };
+
+    return (
+        <div className="dashboard-container">
+            <h2 className="dashboard-title">Resident Dashboard</h2>
+
+            {/* Tab Navigation */}
+            <div className="tab-navigation">
+                <button
+                    className={activeTab === 'invoices' ? 'tab-active' : ''}
+                    onClick={() => setActiveTab('invoices')}
+                >
+                    My Invoices
+                </button>
+                <button
+                    className={activeTab === 'bins' ? 'tab-active' : ''}
+                    onClick={() => setActiveTab('bins')}
+                >
+                    My Waste Bins
+                </button>
+            </div>
+
+            {/* Invoices Tab */}
+            {activeTab === 'invoices' && (
+                <div className="dashboard-card">
+                    <div className="card-header">
+                        <h3>My Invoices</h3>
+                        <button onClick={handleGenerateInvoice} className="generate-button">
+                            Generate Monthly Invoice
                         </button>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="5">You have no invoices.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
-  );
+                    </div>
+
+                    {loading && <p>Loading invoices...</p>}
+                    {error && <p className="error-message">{error}</p>}
+
+                    {!loading && !error && (
+                        <table className="data-table">
+                            <thead>
+                            <tr>
+                                <th>Invoice #</th>
+                                <th>Date</th>
+                                <th>Due Date</th>
+                                <th>Period</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {invoices.length > 0 ? (
+                                invoices.map((invoice) => (
+                                    <tr key={invoice.id}>
+                                        <td>{invoice.invoiceNumber}</td>
+                                        <td>{invoice.invoiceDate}</td>
+                                        <td>{invoice.dueDate}</td>
+                                        <td>{invoice.periodStart} to {invoice.periodEnd}</td>
+                                        <td>${invoice.totalAmount?.toFixed(2)}</td>
+                                        <td>
+                        <span className={`status-badge status-${invoice.status?.toLowerCase()}`}>
+                          {invoice.status}
+                        </span>
+                                        </td>
+                                        <td>
+                                            {invoice.status === 'PENDING' && invoice.totalAmount > 0 && (
+                                                <button
+                                                    onClick={() => handlePayInvoice(invoice.id)}
+                                                    className="pay-button"
+                                                >
+                                                    Pay Now
+                                                </button>
+                                            )}
+                                            {invoice.status === 'PAID' && (
+                                                <span className="paid-text">Paid</span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan="7">No invoices found.</td>
+                                </tr>
+                            )}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            )}
+
+            {/* Bins Tab */}
+            {activeTab === 'bins' && (
+                <div className="dashboard-card">
+                    <h3>My Waste Bins</h3>
+                    {loading && <p>Loading bins...</p>}
+                    {!loading && (
+                        <div className="bins-grid">
+                            {bins.length > 0 ? (
+                                bins.map((bin) => (
+                                    <div key={bin.binId} className="bin-card">
+                                        <h4>Bin {bin.binId}</h4>
+                                        <p><strong>Location:</strong> {bin.location}</p>
+                                        <p><strong>Type:</strong> {bin.binType}</p>
+                                        <p><strong>Capacity:</strong> {bin.capacity}L</p>
+                                        <p><strong>Current Level:</strong> {bin.currentLevel}%</p>
+                                        <p><strong>Status:</strong>
+                                            <span className={`status-badge status-${bin.status?.toLowerCase()}`}>
+                        {bin.status}
+                      </span>
+                                        </p>
+                                    </div>
+                                ))
+                            ) : (
+                                <p>No waste bins registered.</p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
 }
 
 export default ResidentDashboard;

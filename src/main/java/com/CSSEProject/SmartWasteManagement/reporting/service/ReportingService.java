@@ -1,19 +1,21 @@
 // File: src/main/java/com/CSSEProject/SmartWasteManagement/reporting/service/ReportingService.java
 package com.CSSEProject.SmartWasteManagement.reporting.service;
 
-import com.CSSEProject.SmartWasteManagement.dto.CollectionEventDto;
 import com.CSSEProject.SmartWasteManagement.dto.DashboardStatsDto;
-import com.CSSEProject.SmartWasteManagement.dto.MonthlyWasteDto;
 import com.CSSEProject.SmartWasteManagement.waste.entity.CollectionEvent;
+import com.CSSEProject.SmartWasteManagement.waste.entity.WasteBin;
+import com.CSSEProject.SmartWasteManagement.waste.entity.BinStatus;
 import com.CSSEProject.SmartWasteManagement.waste.repository.CollectionEventRepository;
 import com.CSSEProject.SmartWasteManagement.waste.repository.WasteBinRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.stream.Collectors;
 
+/**
+ * Reporting Service - Handles analytics and dashboard reporting functionality
+ * Provides methods for generating dashboard statistics and collection reports
+ */
 @Service
 public class ReportingService {
 
@@ -23,52 +25,64 @@ public class ReportingService {
     @Autowired
     private WasteBinRepository wasteBinRepository;
 
-    public DashboardStatsDto getDashboardStats(LocalDateTime start, LocalDateTime end) {
-        List<CollectionEvent> collections;
-        // If start and end dates are provided, filter by date range
-        if (start != null && end != null) {
-            collections = collectionEventRepository.findByCollectionTimeBetween(start, end);
-        } else {
-            // Otherwise, get all collections
-            collections = collectionEventRepository.findAll();
-        }
-
-        double totalWeight = collections.stream().mapToDouble(CollectionEvent::getWeightInKg).sum();
-        long collectionCount = collections.size();
-        // Total bin count is independent of the date filter
-        long binCount = wasteBinRepository.count();
-
+    /**
+     * Get comprehensive dashboard statistics
+     * 
+     * @return DashboardStatsDto containing all key metrics
+     */
+    public DashboardStatsDto getDashboardStats() {
         DashboardStatsDto stats = new DashboardStatsDto();
-        stats.setTotalCollections(collectionCount);
-        stats.setTotalWeightKg(totalWeight);
-        stats.setTotalBins(binCount);
+        
+        // Get all collections
+        List<CollectionEvent> allCollections = collectionEventRepository.findAll();
+        
+        // Calculate metrics
+        long totalCollections = allCollections.size();
+        double totalWasteCollected = allCollections.stream()
+                .mapToDouble(CollectionEvent::getWeight)
+                .sum();
+        double totalRevenue = allCollections.stream()
+                .mapToDouble(CollectionEvent::getCalculatedCharge)
+                .sum();
+        long totalBins = wasteBinRepository.count();
+        long activeBins = wasteBinRepository.countByStatus(BinStatus.ACTIVE);
+        
+        // Set values
+        stats.setTotalCollections(totalCollections);
+        stats.setTotalWasteCollected(totalWasteCollected);
+        stats.setTotalRevenue(totalRevenue);
+        stats.setTotalBins(totalBins);
+        stats.setActiveBins(activeBins);
+        
         return stats;
     }
 
-    public List<CollectionEventDto> getCollectionEvents(LocalDateTime start, LocalDateTime end) {
-        List<CollectionEvent> collections;
-        if (start != null && end != null) {
-            collections = collectionEventRepository.findByCollectionTimeBetween(start, end);
-        } else {
-            collections = collectionEventRepository.findAll();
-        }
-        return collections.stream()
-                .map(this::convertToDto)
-                .collect(Collectors.toList());
+    /**
+     * Get all collection events
+     * 
+     * @return List of all collection events
+     */
+    public List<CollectionEvent> getCollectionEvents() {
+        return collectionEventRepository.findAll();
     }
 
-    private CollectionEventDto convertToDto(CollectionEvent event) {
-        CollectionEventDto dto = new CollectionEventDto();
-        dto.setId(event.getId());
-        dto.setCollectionTime(event.getCollectionTime());
-        dto.setWeightInKg(event.getWeightInKg());
-        dto.setBinId(event.getWasteBin().getBinId());
-        dto.setResidentName(event.getWasteBin().getResident().getName());
-        dto.setStaffName(event.getStaffMember().getName());
-        return dto;
+    /**
+     * Get collection events by collector ID
+     * 
+     * @param collectorId The ID of the collector
+     * @return List of collection events for the specified collector
+     */
+    public List<CollectionEvent> getCollectionEventsByCollector(Long collectorId) {
+        return collectionEventRepository.findByCollectorId(collectorId);
     }
 
-    public List<MonthlyWasteDto> getMonthlyWasteData() {
-        return collectionEventRepository.findMonthlyWasteTotalForCurrentYear();
+    /**
+     * Get collection events by bin ID
+     * 
+     * @param binId The ID of the waste bin
+     * @return List of collection events for the specified bin
+     */
+    public List<CollectionEvent> getCollectionEventsByBin(String binId) {
+        return collectionEventRepository.findByWasteBinBinId(binId);
     }
 }
