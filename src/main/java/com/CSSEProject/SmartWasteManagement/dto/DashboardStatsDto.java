@@ -6,6 +6,8 @@ import lombok.Data;
 @Data
 public class DashboardStatsDto {
     private long totalCollections;
-    private double totalWeightKg;
+    private double totalWasteCollected;
+    private double totalRevenue;
     private long totalBins;
+    private long activeBins;
 }

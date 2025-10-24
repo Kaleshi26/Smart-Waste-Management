@@ -145,7 +145,7 @@ public class InvoiceService {
 
 
     @Transactional
-    public Payment processInvoicePayment(Long invoiceId, String paymentMethod, String transactionId) {
+    public Invoice processInvoicePayment(Long invoiceId, String paymentMethod, String transactionId) {
         Invoice invoice = invoiceRepository.findById(invoiceId)
                 .orElseThrow(() -> new RuntimeException("Invoice not found"));
 
@@ -170,9 +170,9 @@ public class InvoiceService {
         invoice.setStatus(InvoiceStatus.PAID);
 
         invoiceRepository.save(invoice);
-        Payment savedPayment = paymentRepository.save(payment);
+        paymentRepository.save(payment);
 
-        return savedPayment;
+        return invoice;
     }
 
     public List<Invoice> getInvoicesByResident(Long residentId) {
