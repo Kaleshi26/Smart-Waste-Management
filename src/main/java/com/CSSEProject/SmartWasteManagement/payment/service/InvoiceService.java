@@ -1,4 +1,3 @@
-// File: backend/src/main/java/com/CSSEProject/SmartWasteManagement/payment/service/InvoiceService.java
 package com.CSSEProject.SmartWasteManagement.payment.service;
 
 import com.CSSEProject.SmartWasteManagement.payment.entity.Invoice;
@@ -19,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class InvoiceService {
@@ -137,12 +137,39 @@ public class InvoiceService {
 
         return savedInvoice;
     }
+
     public Invoice getInvoiceById(Long invoiceId) {
         return invoiceRepository.findById(invoiceId)
                 .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + invoiceId));
     }
 
+    // 🆕 NEW METHOD: Get invoice by invoice number (for PayHere integration)
+    public Invoice getInvoiceByNumber(String invoiceNumber) {
+        return invoiceRepository.findByInvoiceNumber(invoiceNumber)
+                .orElseThrow(() -> new RuntimeException("Invoice not found: " + invoiceNumber));
+    }
 
+    // 🆕 NEW METHOD: Mark invoice as paid after PayHere payment
+    public void markInvoiceAsPaid(String invoiceNumber, String paymentId) {
+        try {
+            Invoice invoice = getInvoiceByNumber(invoiceNumber);
+
+            invoice.setStatus(InvoiceStatus.PAID);
+            invoice.setPaymentDate(LocalDate.now());
+            invoice.setPaymentMethod("ONLINE");
+            invoice.setPaymentReference(paymentId);
+
+            invoiceRepository.save(invoice);
+
+            System.out.println("✅ Invoice marked as PAID: " + invoiceNumber);
+            System.out.println("   - Payment Reference: " + paymentId);
+            System.out.println("   - Payment Date: " + LocalDate.now());
+
+        } catch (Exception e) {
+            System.err.println("❌ Error marking invoice as paid: " + e.getMessage());
+            throw new RuntimeException("Failed to update invoice status: " + e.getMessage());
+        }
+    }
 
     @Transactional
     public Invoice processInvoicePayment(Long invoiceId, String paymentMethod, String transactionId) {

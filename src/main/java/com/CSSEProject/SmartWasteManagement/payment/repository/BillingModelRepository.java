@@ -12,4 +12,5 @@ public interface BillingModelRepository extends JpaRepository<BillingModel, Long
     Optional<BillingModel> findByCityAndActiveTrue(String city);
     List<BillingModel> findByActiveTrue();
     boolean existsByCityAndActiveTrue(String city);
+
 }

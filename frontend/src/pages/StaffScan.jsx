@@ -21,12 +21,161 @@ const StaffScan = ({ user }) => {
     const [recyclables, setRecyclables] = useState([]);
     const [showRecyclingSection, setShowRecyclingSection] = useState(false);
 
-    // Check today's schedule when bin is found
+    // Store actual billing rates from backend
+    const [billingRates, setBillingRates] = useState(null);
+    const [recyclingRates, setRecyclingRates] = useState(null);
+
+    // Fetch general billing rates when component loads
+    useEffect(() => {
+        fetchBillingRates();
+    }, []);
+
+    // Check today's schedule and fetch resident-specific rates when bin is found
     useEffect(() => {
         if (currentBin) {
             checkTodaySchedule();
+            if (currentBin.resident) {
+                fetchResidentBillingRates(currentBin.resident.id);
+            }
         }
     }, [currentBin]);
+
+    // Helper function to extract city from address
+    const extractCityFromAddress = (address) => {
+        if (!address) return 'Unknown';
+
+        console.log('📍 Extracting city from address:', address);
+
+        // Simple city extraction - matches your backend logic
+        const addressParts = address.split(',');
+        if (addressParts.length > 1) {
+            const city = addressParts[addressParts.length - 1].trim();
+            console.log('✅ Extracted city:', city);
+            return city;
+        }
+        return address.trim();
+    };
+
+    // UPDATED: Fetch resident-specific billing rates
+    const fetchResidentBillingRates = async (residentId) => {
+        try {
+            console.log('🏙️ Fetching resident-specific billing rates for resident:', residentId);
+
+            const response = await axios.get(`http://localhost:8082/api/billing/models/resident/${residentId}`);
+            const billingModel = response.data;
+
+            console.log('✅ Resident billing model:', billingModel);
+
+            if (billingModel) {
+                const rates = {
+                    billingType: billingModel.billingType || 'WEIGHT_BASED',
+                    ratePerKg: parseFloat(billingModel.ratePerKg) || 0,
+                    monthlyFlatFee: parseFloat(billingModel.monthlyFlatFee) || 0,
+                    baseFee: parseFloat(billingModel.baseFee) || 0,
+                    additionalRatePerKg: parseFloat(billingModel.additionalRatePerKg) || 0,
+                    modelName: billingModel.city || 'Default',
+                    city: billingModel.city // Add city for display
+                };
+
+                console.log('🎯 Resident-specific rates:', rates);
+                setBillingRates(rates);
+
+                // Recalculate charges if weight is already entered
+                if (scanData.weight && currentBin) {
+                    const charges = calculateCharges(scanData.weight, currentBin.binType, recyclables, rates);
+                    setBillingInfo(charges);
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error fetching resident billing rates:', error);
+            console.log('🔄 Falling back to general billing rates...');
+            // Don't fetch general rates here to avoid infinite loop
+        }
+    };
+
+    // UPDATED: Fetch all billing model fields
+    const fetchBillingRates = async () => {
+        try {
+            console.log('🔄 Fetching general billing rates...');
+
+            // Fetch billing models
+            const billingResponse = await axios.get('http://localhost:8082/api/billing/models');
+            const billingModels = billingResponse.data;
+
+            console.log('📋 All billing models:', billingModels);
+
+            // Find the active billing model
+            let activeModel = billingModels.find(model => model.active === true);
+
+            console.log('✅ Active billing model:', activeModel);
+
+            if (activeModel) {
+                // DEBUG: Log the actual rates from backend
+                console.log('💰 Rate details from backend:', {
+                    ratePerKg: activeModel.ratePerKg,
+                    monthlyFlatFee: activeModel.monthlyFlatFee,
+                    baseFee: activeModel.baseFee,
+                    additionalRatePerKg: activeModel.additionalRatePerKg,
+                    billingType: activeModel.billingType
+                });
+
+                const rates = {
+                    billingType: activeModel.billingType || 'WEIGHT_BASED',
+                    ratePerKg: parseFloat(activeModel.ratePerKg) || 0,
+                    monthlyFlatFee: parseFloat(activeModel.monthlyFlatFee) || 0,
+                    baseFee: parseFloat(activeModel.baseFee) || 0,
+                    additionalRatePerKg: parseFloat(activeModel.additionalRatePerKg) || 0,
+                    modelName: activeModel.city || 'Default',
+                    city: activeModel.city || 'General'
+                };
+
+                console.log('🎯 Final rates being used:', rates);
+                setBillingRates(rates);
+            } else {
+                // Fallback to safe default
+                console.warn('⚠️ No active billing model found, using defaults');
+                setBillingRates({
+                    billingType: 'WEIGHT_BASED',
+                    ratePerKg: 5.0,
+                    monthlyFlatFee: 0,
+                    baseFee: 0,
+                    additionalRatePerKg: 0,
+                    modelName: 'Default',
+                    city: 'General'
+                });
+            }
+
+            // Recycling rates (these are fixed)
+            const recyclingRatesData = {
+                'PLASTIC': 0.8,
+                'METAL': 1.2,
+                'PAPER': 0.4,
+                'GLASS': 0.3,
+                'ELECTRONICS': 2.5
+            };
+            setRecyclingRates(recyclingRatesData);
+
+        } catch (error) {
+            console.error('❌ Error fetching billing rates:', error);
+            // Fallback to safe defaults
+            setBillingRates({
+                billingType: 'WEIGHT_BASED',
+                ratePerKg: 5.0,
+                monthlyFlatFee: 0,
+                baseFee: 0,
+                additionalRatePerKg: 0,
+                modelName: 'Default',
+                city: 'General'
+            });
+            setRecyclingRates({
+                'PLASTIC': 0.8,
+                'METAL': 1.2,
+                'PAPER': 0.4,
+                'GLASS': 0.3,
+                'ELECTRONICS': 2.5
+            });
+        }
+    };
 
     const checkTodaySchedule = async () => {
         try {
@@ -38,61 +187,107 @@ const StaffScan = ({ user }) => {
         }
     };
 
-    // FIXED: Calculate charges with proper recycling refunds
-    const calculateCharges = (weight, binType, recyclables = []) => {
+    // UPDATED: Calculate charges to handle ALL billing types with custom rates parameter
+    const calculateCharges = (weight, binType, recyclables = [], customRates = null) => {
+        const ratesToUse = customRates || billingRates;
+
+        if (!ratesToUse || !recyclingRates) {
+            console.log('❌ Billing rates not loaded yet');
+            return null;
+        }
+
         // Parse weight safely
         const parsedWeight = parseFloat(weight) || 0;
 
-        // Base rates for waste collection
-        const rates = {
-            'GENERAL_WASTE': 0.5,
-            'RECYCLABLE_PLASTIC': 0.3,
-            'RECYCLABLE_PAPER': 0.2,
-            'E_WASTE': 1.0
-        };
+        console.log('🧮 Starting calculation:', {
+            weight: parsedWeight,
+            billingRates: ratesToUse,
+            recyclablesCount: recyclables.length
+        });
 
-        // Recycling refund rates per kg (what resident gets back)
-        const recyclingRefundRates = {
-            'PLASTIC': 0.8,
-            'METAL': 1.2,
-            'PAPER': 0.4,
-            'GLASS': 0.3,
-            'ELECTRONICS': 2.5
-        };
+        const baseRate = ratesToUse.ratePerKg;
+        const billingType = ratesToUse.billingType || 'WEIGHT_BASED';
 
-        const baseRate = rates[binType] || 0.5;
-        const weightCharge = parsedWeight * baseRate;
-        const serviceFee = 2.0;
+        console.log('💰 Using base rate:', baseRate, 'for type:', billingType, 'in city:', ratesToUse.city);
 
-        // Calculate recycling refunds - only for items with positive weight
+        let baseCharge = 0;
+        let weightBasedCharge = 0;
+        let otherCharges = 0;
+
+        switch(billingType) {
+            case 'WEIGHT_BASED':
+                weightBasedCharge = parsedWeight * baseRate;
+                console.log('📊 Weight based charge:', parsedWeight, '×', baseRate, '=', weightBasedCharge);
+                break;
+
+            case 'FLAT_FEE':
+                baseCharge = ratesToUse.monthlyFlatFee || 0;
+                console.log('📊 Flat fee charge:', baseCharge);
+                break;
+
+            case 'HYBRID':
+                baseCharge = ratesToUse.baseFee || 0;
+                weightBasedCharge = parsedWeight * (ratesToUse.additionalRatePerKg || 0);
+                console.log('📊 Hybrid charge - Base:', baseCharge, '+ Weight:', weightBasedCharge);
+                break;
+
+            default:
+                weightBasedCharge = parsedWeight * baseRate;
+                console.log('📊 Default weight based charge:', weightBasedCharge);
+        }
+
+        // Calculate recycling refunds
         let totalRecyclingRefund = 0;
         const recyclingDetails = recyclables
             .filter(item => item.weightKg > 0)
             .map(item => {
-                const refundAmount = (item.weightKg || 0) * recyclingRefundRates[item.type];
+                const itemWeight = item.weightKg || 0;
+                const itemRate = recyclingRates[item.type] || 0;
+                const refundAmount = itemWeight * itemRate;
                 totalRecyclingRefund += refundAmount;
+
+                console.log('♻️ Recycling item:', {
+                    type: item.type,
+                    weight: itemWeight,
+                    rate: itemRate,
+                    refund: refundAmount
+                });
+
                 return {
                     type: item.type,
-                    weightKg: item.weightKg || 0,
+                    weightKg: itemWeight,
                     quality: item.quality || 'GOOD',
                     notes: item.notes || '',
                     refundAmount: refundAmount,
-                    ratePerKg: recyclingRefundRates[item.type]
+                    ratePerKg: itemRate
                 };
             });
 
-        const totalCharge = Math.max(0, weightCharge + serviceFee - totalRecyclingRefund);
+        const totalCharge = Math.max(0, baseCharge + weightBasedCharge + otherCharges - totalRecyclingRefund);
+
+        console.log('🎯 Final calculation:', {
+            baseCharge,
+            weightBasedCharge,
+            otherCharges,
+            totalRecyclingRefund,
+            totalCharge,
+            city: ratesToUse.city
+        });
 
         return {
+            billingType,
             baseRate,
-            weightCharge,
-            serviceFee,
+            baseCharge,
+            weightBasedCharge,
+            otherCharges,
             totalRecyclingRefund,
             recyclingDetails,
             totalCharge,
             weight: parsedWeight,
             binType,
-            hasRecycling: totalRecyclingRefund > 0
+            hasRecycling: totalRecyclingRefund > 0,
+            modelName: ratesToUse.modelName,
+            city: ratesToUse.city
         };
     };
 
@@ -103,11 +298,10 @@ const StaffScan = ({ user }) => {
         });
     };
 
-    // FIXED: Handle recyclable input changes with proper validation
+    // Handle recyclable input changes
     const handleRecyclableChange = (index, field, value) => {
         const updatedRecyclables = [...recyclables];
 
-        // Ensure we have an object at this index
         if (!updatedRecyclables[index]) {
             updatedRecyclables[index] = {
                 type: 'PLASTIC',
@@ -117,7 +311,6 @@ const StaffScan = ({ user }) => {
             };
         }
 
-        // Update the field
         updatedRecyclables[index] = {
             ...updatedRecyclables[index],
             [field]: field === 'weightKg' ? (parseFloat(value) || 0) : value
@@ -125,8 +318,7 @@ const StaffScan = ({ user }) => {
 
         setRecyclables(updatedRecyclables);
 
-        // Recalculate charges when recyclables change
-        if (scanData.weight && currentBin) {
+        if (scanData.weight && currentBin && billingRates) {
             const charges = calculateCharges(scanData.weight, currentBin.binType, updatedRecyclables);
             setBillingInfo(charges);
         }
@@ -147,7 +339,7 @@ const StaffScan = ({ user }) => {
         const updatedRecyclables = recyclables.filter((_, i) => i !== index);
         setRecyclables(updatedRecyclables);
 
-        if (scanData.weight && currentBin) {
+        if (scanData.weight && currentBin && billingRates) {
             const charges = calculateCharges(scanData.weight, currentBin.binType, updatedRecyclables);
             setBillingInfo(charges);
         }
@@ -165,6 +357,13 @@ const StaffScan = ({ user }) => {
             const bin = response.data;
             setCurrentBin(bin);
             toast.success(`Bin ${bin.binId} found!`);
+
+            if (!bin.resident) {
+                toast.error('Warning: This bin is not assigned to any resident', {
+                    icon: '⚠️',
+                    duration: 4000
+                });
+            }
         } catch (error) {
             console.error('Error scanning bin:', error);
             toast.error('Bin not found. Please check RFID tag or use manual entry.');
@@ -186,6 +385,13 @@ const StaffScan = ({ user }) => {
             const bin = response.data;
             setCurrentBin(bin);
             toast.success(`Bin ${bin.binId} found!`);
+
+            if (!bin.resident) {
+                toast.error('Warning: This bin is not assigned to any resident', {
+                    icon: '⚠️',
+                    duration: 4000
+                });
+            }
         } catch (error) {
             console.error('Error looking up bin:', error);
             toast.error('Bin not found. Please check Bin ID.');
@@ -197,7 +403,7 @@ const StaffScan = ({ user }) => {
 
     const handleWeightChange = (weight) => {
         setScanData({ ...scanData, weight });
-        if (weight && currentBin) {
+        if (weight && currentBin && billingRates) {
             const charges = calculateCharges(weight, currentBin.binType, recyclables);
             setBillingInfo(charges);
         }
@@ -206,6 +412,12 @@ const StaffScan = ({ user }) => {
     const recordCollection = async () => {
         if (!currentBin) {
             toast.error('Please scan or lookup a bin first');
+            return;
+        }
+
+        // ENHANCED: Check if bin has resident assigned
+        if (!currentBin.resident) {
+            toast.error('This bin is not assigned to any resident. Cannot record collection.');
             return;
         }
 
@@ -233,7 +445,6 @@ const StaffScan = ({ user }) => {
                 weight: parseFloat(scanData.weight),
                 truckId: scanData.truckId,
                 notes: scanData.notes,
-                // Include only recyclables with positive weight
                 recyclables: validRecyclables
             };
 
@@ -269,16 +480,15 @@ const StaffScan = ({ user }) => {
         toast.success('Ready for next collection!');
     };
 
-    // FIXED: Get recycling rates for display
-    const getRecyclingRatesInfo = () => {
-        return {
-            'PLASTIC': 0.8,
-            'METAL': 1.2,
-            'PAPER': 0.4,
-            'GLASS': 0.3,
-            'ELECTRONICS': 2.5
-        };
-    };
+    // Show loading if rates aren't loaded yet
+    if (!billingRates || !recyclingRates) {
+        return (
+            <div className="loading-state">
+                <div className="loading-spinner"></div>
+                <p>Loading billing rates...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="scan-page">
@@ -289,6 +499,13 @@ const StaffScan = ({ user }) => {
                 </div>
                 <div className="header-actions">
                     <span className="staff-badge">Staff Mode</span>
+                    {/* UPDATED: Show current billing rate and type WITH CITY */}
+                    <div className="current-rate-badge">
+                        {billingRates.billingType === 'WEIGHT_BASED' && `Rate: $${billingRates.ratePerKg}/kg`}
+                        {billingRates.billingType === 'FLAT_FEE' && `Flat Fee: $${billingRates.monthlyFlatFee}`}
+                        {billingRates.billingType === 'HYBRID' && `Hybrid: $${billingRates.baseFee} + $${billingRates.additionalRatePerKg}/kg`}
+                        {billingRates.city && ` (${billingRates.city})`}
+                    </div>
                 </div>
             </div>
 
@@ -369,6 +586,9 @@ const StaffScan = ({ user }) => {
                             {todaySchedule?.scheduled && (
                                 <span className="schedule-badge">Scheduled for Today</span>
                             )}
+                            {!currentBin.resident && (
+                                <span className="warning-badge">No Resident Assigned</span>
+                            )}
                         </div>
 
                         <div className="bin-details-grid">
@@ -396,6 +616,20 @@ const StaffScan = ({ user }) => {
                                 <label>Resident:</label>
                                 <span>{currentBin.resident?.name || 'Not assigned'}</span>
                             </div>
+                            {/* ADDED: City Information */}
+                            {currentBin.resident?.address && (
+                                <div className="detail-item">
+                                    <label>City:</label>
+                                    <span>{extractCityFromAddress(currentBin.resident.address)}</span>
+                                </div>
+                            )}
+                            {/* ADDED: Billing Model Info */}
+                            {billingRates.city && (
+                                <div className="detail-item">
+                                    <label>Billing Model:</label>
+                                    <span>{billingRates.city} ({billingRates.billingType})</span>
+                                </div>
+                            )}
                         </div>
 
                         {/* Collection Data Form */}
@@ -415,7 +649,12 @@ const StaffScan = ({ user }) => {
                             </div>
 
                             <div className="form-group">
-                                <label className="form-label">Total Waste Weight (kg)</label>
+                                <label className="form-label">
+                                    {billingRates.billingType === 'FLAT_FEE'
+                                        ? 'Waste Weight (kg) - For Reporting Only'
+                                        : 'Total Waste Weight (kg)'
+                                    }
+                                </label>
                                 <input
                                     type="number"
                                     name="weight"
@@ -427,6 +666,11 @@ const StaffScan = ({ user }) => {
                                     min="0"
                                     required
                                 />
+                                {billingRates.billingType === 'FLAT_FEE' && (
+                                    <small className="form-help">
+                                        Weight is recorded for reporting purposes only. Charge is based on flat fee.
+                                    </small>
+                                )}
                             </div>
 
                             {/* Recycling Section Toggle */}
@@ -448,11 +692,11 @@ const StaffScan = ({ user }) => {
                                         Record any recyclable materials found in the waste. This will provide refunds to the resident.
                                     </p>
 
-                                    {/* NEW: Recycling Rates Info */}
+                                    {/* Recycling Rates Info */}
                                     <div className="recycling-rates-info">
                                         <h6>💰 Recycling Refund Rates (per kg):</h6>
                                         <div className="rates-grid">
-                                            {Object.entries(getRecyclingRatesInfo()).map(([type, rate]) => (
+                                            {Object.entries(recyclingRates).map(([type, rate]) => (
                                                 <div key={type} className="rate-item">
                                                     <span className="material-type">{type}:</span>
                                                     <span className="rate-amount">${rate.toFixed(2)}</span>
@@ -481,11 +725,11 @@ const StaffScan = ({ user }) => {
                                                         onChange={(e) => handleRecyclableChange(index, 'type', e.target.value)}
                                                         className="form-input"
                                                     >
-                                                        <option value="PLASTIC">Plastic (${getRecyclingRatesInfo().PLASTIC}/kg)</option>
-                                                        <option value="METAL">Metal (${getRecyclingRatesInfo().METAL}/kg)</option>
-                                                        <option value="PAPER">Paper (${getRecyclingRatesInfo().PAPER}/kg)</option>
-                                                        <option value="GLASS">Glass (${getRecyclingRatesInfo().GLASS}/kg)</option>
-                                                        <option value="ELECTRONICS">Electronics (${getRecyclingRatesInfo().ELECTRONICS}/kg)</option>
+                                                        <option value="PLASTIC">Plastic (${recyclingRates.PLASTIC}/kg)</option>
+                                                        <option value="METAL">Metal (${recyclingRates.METAL}/kg)</option>
+                                                        <option value="PAPER">Paper (${recyclingRates.PAPER}/kg)</option>
+                                                        <option value="GLASS">Glass (${recyclingRates.GLASS}/kg)</option>
+                                                        <option value="ELECTRONICS">Electronics (${recyclingRates.ELECTRONICS}/kg)</option>
                                                     </select>
                                                 </div>
                                                 <div className="form-group">
@@ -524,13 +768,13 @@ const StaffScan = ({ user }) => {
                                                     />
                                                 </div>
 
-                                                {/* NEW: Real-time recycling refund preview */}
+                                                {/* Real-time recycling refund preview */}
                                                 {item.weightKg > 0 && (
                                                     <div className="recycling-refund-preview">
                                                         <div className="refund-amount">
                                                             <strong>Refund for this item:</strong>
                                                             <span className="text-success">
-                                                                ${((item.weightKg || 0) * getRecyclingRatesInfo()[item.type]).toFixed(2)}
+                                                                ${((item.weightKg || 0) * recyclingRates[item.type]).toFixed(2)}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -549,19 +793,47 @@ const StaffScan = ({ user }) => {
                                 </div>
                             )}
 
-                            {/* Billing Preview */}
+                            {/* UPDATED: Billing Preview with City Information */}
                             {billingInfo && (
                                 <div className="billing-preview">
-                                    <h5>💰 Charge Calculation</h5>
+                                    <h5>💰 Charge Calculation ({billingInfo.billingType})</h5>
+                                    {billingInfo.city && (
+                                        <div className="billing-location">
+                                            <small className="text-muted">📍 Billing rates for: {billingInfo.city}</small>
+                                        </div>
+                                    )}
                                     <div className="charge-breakdown">
-                                        <div className="charge-item">
-                                            <span>Weight ({billingInfo.weight} kg × ${billingInfo.baseRate}/kg):</span>
-                                            <span>${billingInfo.weightCharge.toFixed(2)}</span>
-                                        </div>
-                                        <div className="charge-item">
-                                            <span>Service Fee:</span>
-                                            <span>${billingInfo.serviceFee.toFixed(2)}</span>
-                                        </div>
+                                        {/* Show components based on billing type */}
+                                        {billingInfo.baseCharge > 0 && (
+                                            <div className="charge-item">
+                                                <span>
+                                                    {billingInfo.billingType === 'FLAT_FEE'
+                                                        ? 'Monthly Flat Fee:'
+                                                        : 'Base Charge:'
+                                                    }
+                                                </span>
+                                                <span>${billingInfo.baseCharge.toFixed(2)}</span>
+                                            </div>
+                                        )}
+
+                                        {billingInfo.weightBasedCharge > 0 && (
+                                            <div className="charge-item">
+                                                <span>
+                                                    {billingInfo.billingType === 'WEIGHT_BASED'
+                                                        ? `Weight Charge (${billingInfo.weight} kg × $${billingInfo.baseRate}/kg):`
+                                                        : `Additional Weight Charge (${billingInfo.weight} kg × $${billingRates.additionalRatePerKg}/kg):`
+                                                    }
+                                                </span>
+                                                <span>${billingInfo.weightBasedCharge.toFixed(2)}</span>
+                                            </div>
+                                        )}
+
+                                        {billingInfo.otherCharges > 0 && (
+                                            <div className="charge-item">
+                                                <span>Other Charges:</span>
+                                                <span>${billingInfo.otherCharges.toFixed(2)}</span>
+                                            </div>
+                                        )}
 
                                         {/* Recycling Refunds */}
                                         {billingInfo.hasRecycling && (
@@ -569,7 +841,7 @@ const StaffScan = ({ user }) => {
                                                 <div className="charge-section-divider"></div>
                                                 <div className="charge-item text-success">
                                                     <span>
-                                                        <strong>♻️ Recycling Refunds:</strong>
+                                                        <strong>♻️ Recycling Credits:</strong>
                                                     </span>
                                                     <span><strong>-${billingInfo.totalRecyclingRefund.toFixed(2)}</strong></span>
                                                 </div>
@@ -584,20 +856,16 @@ const StaffScan = ({ user }) => {
 
                                         <div className="charge-section-divider"></div>
                                         <div className="charge-item total">
-                                            <span><strong>Final Charge:</strong></span>
+                                            <span><strong>Total Amount:</strong></span>
                                             <span><strong>${billingInfo.totalCharge.toFixed(2)}</strong></span>
                                         </div>
 
-                                        {/* NEW: Savings Summary */}
+                                        {/* Savings Summary */}
                                         {billingInfo.hasRecycling && (
                                             <div className="savings-summary">
                                                 <div className="savings-item">
                                                     <span>Resident Saves:</span>
                                                     <span className="text-success">${billingInfo.totalRecyclingRefund.toFixed(2)}</span>
-                                                </div>
-                                                <div className="savings-item">
-                                                    <span>Original Amount:</span>
-                                                    <span className="text-muted">${(billingInfo.weightCharge + billingInfo.serviceFee).toFixed(2)}</span>
                                                 </div>
                                             </div>
                                         )}
@@ -619,16 +887,17 @@ const StaffScan = ({ user }) => {
 
                             <button
                                 onClick={recordCollection}
-                                disabled={scanning || !scanData.weight}
+                                disabled={scanning || !scanData.weight || !currentBin.resident}
                                 className="btn btn-success btn-block"
                             >
                                 {scanning ? 'Recording...' : 'Record Collection'}
+                                {!currentBin.resident && ' (No Resident)'}
                             </button>
                         </div>
                     </div>
                 )}
 
-                {/* Invoice Preview Modal */}
+                {/* UPDATED: Invoice Preview Modal with City Info */}
                 {showInvoicePreview && billingInfo && (
                     <div className="modal-overlay">
                         <div className="modal">
@@ -640,10 +909,13 @@ const StaffScan = ({ user }) => {
                                     <div className="success-icon">✅</div>
                                     <h4>Collection Recorded Successfully</h4>
                                     <p>Bin {currentBin?.binId} collection has been recorded and invoice generated.</p>
+                                    {billingInfo.city && (
+                                        <p className="text-muted">📍 Applied {billingInfo.city} billing rates</p>
+                                    )}
                                 </div>
 
                                 <div className="invoice-summary">
-                                    <h5>Invoice Summary</h5>
+                                    <h5>Invoice Summary ({billingInfo.billingType})</h5>
                                     <div className="invoice-details">
                                         <div className="invoice-item">
                                             <span>Bin ID:</span>
@@ -657,12 +929,43 @@ const StaffScan = ({ user }) => {
                                             <span>Waste Type:</span>
                                             <span>{currentBin?.binType?.replace(/_/g, ' ')}</span>
                                         </div>
+                                        {billingInfo.city && (
+                                            <div className="invoice-item">
+                                                <span>Billing City:</span>
+                                                <span>{billingInfo.city}</span>
+                                            </div>
+                                        )}
+
+                                        {/* UPDATED: Match invoice structure for all billing types */}
+                                        {billingInfo.baseCharge > 0 && (
+                                            <div className="invoice-item">
+                                                <span>
+                                                    {billingInfo.billingType === 'FLAT_FEE'
+                                                        ? 'Monthly Flat Fee:'
+                                                        : 'Base Charge:'
+                                                    }
+                                                </span>
+                                                <span>${billingInfo.baseCharge.toFixed(2)}</span>
+                                            </div>
+                                        )}
+                                        {billingInfo.weightBasedCharge > 0 && (
+                                            <div className="invoice-item">
+                                                <span>Weight-Based Charge:</span>
+                                                <span>${billingInfo.weightBasedCharge.toFixed(2)}</span>
+                                            </div>
+                                        )}
+                                        {billingInfo.otherCharges > 0 && (
+                                            <div className="invoice-item">
+                                                <span>Other Charges:</span>
+                                                <span>${billingInfo.otherCharges.toFixed(2)}</span>
+                                            </div>
+                                        )}
 
                                         {/* Recycling Summary in Invoice */}
                                         {billingInfo.hasRecycling && (
                                             <>
                                                 <div className="invoice-item text-success">
-                                                    <span>Recycling Refunds:</span>
+                                                    <span>Recycling Credits:</span>
                                                     <span>-${billingInfo.totalRecyclingRefund.toFixed(2)}</span>
                                                 </div>
                                                 {billingInfo.recyclingDetails.map((item, index) => (
@@ -675,7 +978,7 @@ const StaffScan = ({ user }) => {
                                         )}
 
                                         <div className="invoice-item total">
-                                            <span>Total Charge:</span>
+                                            <span>Total Amount:</span>
                                             <span className="total-amount">${billingInfo.totalCharge.toFixed(2)}</span>
                                         </div>
                                     </div>
@@ -690,7 +993,10 @@ const StaffScan = ({ user }) => {
                                         <li>✅ Bin level reset to 0%</li>
                                         <li>✅ Collection marked as completed</li>
                                         {billingInfo.hasRecycling && (
-                                            <li>✅ Recycling refunds applied: <strong>${billingInfo.totalRecyclingRefund.toFixed(2)}</strong></li>
+                                            <li>✅ Recycling credits applied: <strong>${billingInfo.totalRecyclingRefund.toFixed(2)}</strong></li>
+                                        )}
+                                        {billingInfo.city && (
+                                            <li>✅ {billingInfo.city} billing rates applied</li>
                                         )}
                                     </ul>
                                 </div>
@@ -712,22 +1018,22 @@ const StaffScan = ({ user }) => {
                     <div className="stat-item">
                         <div className="stat-icon">📊</div>
                         <div className="stat-content">
-                            <strong>Real-time Billing</strong>
-                            <p>Charges calculated automatically based on weight and waste type</p>
+                            <strong>City-Specific Billing</strong>
+                            <p>Charges calculated using resident's city billing model</p>
                         </div>
                     </div>
                     <div className="stat-item">
                         <div className="stat-icon">♻️</div>
                         <div className="stat-content">
-                            <strong>Recycling Refunds</strong>
-                            <p>Residents get refunds for recyclable materials</p>
+                            <strong>Recycling Credits</strong>
+                            <p>Residents get credits for recyclable materials</p>
                         </div>
                     </div>
                     <div className="stat-item">
                         <div className="stat-icon">💰</div>
                         <div className="stat-content">
                             <strong>Instant Savings</strong>
-                            <p>Recycling refunds applied immediately to invoices</p>
+                            <p>Recycling credits applied immediately to invoices</p>
                         </div>
                     </div>
                 </div>

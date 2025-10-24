@@ -16,35 +16,98 @@ const StaffCollections = ({ user }) => {
         fetchCollections();
     }, [user.id]);
 
+    // 🎯 ADD THIS FUNCTION: Normalize collection data from backend
+    const normalizeCollection = (collection) => {
+        console.log('🔄 Normalizing collection:', collection.id);
+
+        return {
+            ...collection,
+            // Map backend fields to frontend expected fields
+            calculatedCharge: collection.charge || collection.calculatedCharge || 0,
+            recyclingRefund: collection.recyclingRefund || collection.refundAmount || 0,
+            finalAmount: collection.finalAmount || collection.totalAmount || 0,
+            // Ensure all required fields have values
+            weight: collection.weight || 0
+        };
+    };
+
     const fetchCollections = async () => {
         try {
+            console.log('🔄 Fetching collections for staff:', user.id);
             const response = await axios.get(`http://localhost:8082/api/waste/collections/collector/${user.id}`);
 
-            // The response now includes proper bin details
-            setCollections(response.data || []);
+            // 🎯 NORMALIZE the collection data
+            const normalizedCollections = (response.data || []).map(normalizeCollection);
+
+            // 🔍 DEBUG: Log collection data for verification
+            if (normalizedCollections.length > 0) {
+                console.log('📊 First collection after normalization:', {
+                    id: normalizedCollections[0].id,
+                    weight: normalizedCollections[0].weight,
+                    calculatedCharge: normalizedCollections[0].calculatedCharge,
+                    recyclingRefund: normalizedCollections[0].recyclingRefund,
+                    finalAmount: normalizedCollections[0].finalAmount
+                });
+            }
+
+            setCollections(normalizedCollections);
         } catch (error) {
             console.error('Error fetching collections:', error);
+            console.error('Error details:', error.response?.data);
             toast.error('Failed to load collection history');
         } finally {
             setLoading(false);
         }
     };
+
     const filteredCollections = collections.filter(collection => {
         if (filter === 'all') return true;
         if (filter === 'today') {
             const today = new Date().toISOString().split('T')[0];
             return collection.collectionTime?.includes(today);
         }
+        if (filter === 'week') {
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            const collectionDate = new Date(collection.collectionTime);
+            return collectionDate >= weekAgo;
+        }
         return true;
     });
 
+    // 🎯 UPDATED: Enhanced statistics calculations
     const getTotalWeight = () => {
         return filteredCollections.reduce((sum, coll) => sum + (coll.weight || 0), 0);
     };
 
-    const getEarnings = () => {
-        // Simple calculation - in real app, this would come from backend
-        return filteredCollections.length * 2.5; // $2.5 per collection example
+    const getTotalRevenue = () => {
+        return filteredCollections.reduce((sum, coll) => sum + (coll.calculatedCharge || 0), 0);
+    };
+
+    const getTotalRecyclingRefunds = () => {
+        return filteredCollections.reduce((sum, coll) => sum + (coll.recyclingRefund || 0), 0);
+    };
+
+    const getNetRevenue = () => {
+        return getTotalRevenue() - getTotalRecyclingRefunds();
+    };
+
+    // 🎯 NEW: Calculate performance metrics
+    const getPerformanceMetrics = () => {
+        const totalCollections = filteredCollections.length;
+        const avgWeight = totalCollections > 0 ? getTotalWeight() / totalCollections : 0;
+        const avgRevenue = totalCollections > 0 ? getNetRevenue() / totalCollections : 0;
+
+        return {
+            totalCollections,
+            avgWeight,
+            avgRevenue
+        };
+    };
+
+    // 🎯 NEW: Get collections with recycling
+    const getCollectionsWithRecycling = () => {
+        return filteredCollections.filter(coll => coll.recyclingRefund > 0);
     };
 
     if (loading) {
@@ -55,6 +118,9 @@ const StaffCollections = ({ user }) => {
             </div>
         );
     }
+
+    const performance = getPerformanceMetrics();
+    const collectionsWithRecycling = getCollectionsWithRecycling();
 
     return (
         <div className="collections-page">
@@ -70,7 +136,7 @@ const StaffCollections = ({ user }) => {
                 </div>
             </div>
 
-            {/* Summary Cards */}
+            {/* 🎯 UPDATED: Enhanced Summary Cards */}
             <div className="stats-grid">
                 <div className="stat-card">
                     <div className="stat-title">Total Collections</div>
@@ -85,21 +151,32 @@ const StaffCollections = ({ user }) => {
                 </div>
 
                 <div className="stat-card success">
-                    <div className="stat-title">Estimated Earnings</div>
-                    <div className="stat-value">${getEarnings().toFixed(2)}</div>
-                    <div className="stat-change">This period</div>
+                    <div className="stat-title">Recycling Refunds</div>
+                    <div className="stat-value">${getTotalRecyclingRefunds().toFixed(2)}</div>
+                    <div className="stat-change">Total savings</div>
                 </div>
 
-                <div className="stat-card">
+                <div className="stat-card info">
+                    <div className="stat-title">Net Revenue</div>
+                    <div className="stat-value">${getNetRevenue().toFixed(2)}</div>
+                    <div className="stat-change">After refunds</div>
+                </div>
+
+                {/* 🎯 NEW: Additional Performance Cards */}
+                <div className="stat-card secondary">
                     <div className="stat-title">Avg. Weight</div>
-                    <div className="stat-value">
-                        {filteredCollections.length > 0 ? (getTotalWeight() / filteredCollections.length).toFixed(1) : '0.0'}kg
-                    </div>
+                    <div className="stat-value">{performance.avgWeight.toFixed(1)}kg</div>
                     <div className="stat-change">Per collection</div>
+                </div>
+
+                <div className="stat-card primary">
+                    <div className="stat-title">Green Collections</div>
+                    <div className="stat-value">{collectionsWithRecycling.length}</div>
+                    <div className="stat-change">With recycling</div>
                 </div>
             </div>
 
-            {/* Filters */}
+            {/* 🎯 UPDATED: Enhanced Filters */}
             <div className="filters-section">
                 <div className="filter-buttons">
                     <button
@@ -113,6 +190,12 @@ const StaffCollections = ({ user }) => {
                         onClick={() => setFilter('today')}
                     >
                         Today
+                    </button>
+                    <button
+                        className={filter === 'week' ? 'active' : ''}
+                        onClick={() => setFilter('week')}
+                    >
+                        This Week
                     </button>
                 </div>
 
@@ -138,10 +221,21 @@ const StaffCollections = ({ user }) => {
                 </div>
             </div>
 
-            {/* Collections Table */}
+            {/* 🎯 UPDATED: Enhanced Collections Table */}
             <div className="card">
                 <div className="card-header">
                     <h3>Collection Records</h3>
+                    <div className="revenue-summary">
+                        <span className="revenue-item">
+                            Gross: <strong>${getTotalRevenue().toFixed(2)}</strong>
+                        </span>
+                        <span className="revenue-item text-success">
+                            Refunds: <strong>-${getTotalRecyclingRefunds().toFixed(2)}</strong>
+                        </span>
+                        <span className="revenue-item total">
+                            Net: <strong>${getNetRevenue().toFixed(2)}</strong>
+                        </span>
+                    </div>
                 </div>
 
                 {filteredCollections.length > 0 ? (
@@ -154,6 +248,8 @@ const StaffCollections = ({ user }) => {
                                 <th>Location</th>
                                 <th>Weight</th>
                                 <th>Charge</th>
+                                <th>Recycling Refund</th>
+                                <th>Net Amount</th>
                                 <th>Status</th>
                             </tr>
                             </thead>
@@ -175,17 +271,27 @@ const StaffCollections = ({ user }) => {
                                     </td>
                                     <td>{collection.wasteBin?.location}</td>
                                     <td>
-                                            <span className="weight-badge">
-                                                {collection.weight} kg
-                                            </span>
+                                        <span className="weight-badge">
+                                            {collection.weight} kg
+                                        </span>
                                     </td>
                                     <td>
-                                        ${collection.calculatedCharge?.toFixed(2) || '0.00'}
+                                        <strong>${(collection.calculatedCharge || 0).toFixed(2)}</strong>
+                                    </td>
+                                    <td className={collection.recyclingRefund > 0 ? 'text-success' : ''}>
+                                        {collection.recyclingRefund > 0 ? `-$${collection.recyclingRefund.toFixed(2)}` : '-'}
                                     </td>
                                     <td>
-                                            <span className="status-badge status-success">
-                                                Completed
-                                            </span>
+                                        <strong className={
+                                            collection.recyclingRefund > 0 ? 'text-info' : ''
+                                        }>
+                                            ${((collection.calculatedCharge || 0) - (collection.recyclingRefund || 0)).toFixed(2)}
+                                        </strong>
+                                    </td>
+                                    <td>
+                                        <span className="status-badge status-success">
+                                            Completed
+                                        </span>
                                     </td>
                                 </tr>
                             ))}
@@ -208,18 +314,8 @@ const StaffCollections = ({ user }) => {
                 )}
             </div>
 
-            {/* Performance Chart Placeholder */}
-            <div className="card">
-                <h3>Performance Overview</h3>
-                <div className="performance-placeholder">
-                    <div className="placeholder-content">
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
-                        <p>Collection performance charts will be displayed here</p>
-                    </div>
-                </div>
-            </div>
+
+
         </div>
     );
 };

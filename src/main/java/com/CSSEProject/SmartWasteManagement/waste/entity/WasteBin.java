@@ -44,10 +44,10 @@ public class WasteBin {
     @Column(name = "installation_date")
     private LocalDate installationDate;
 
-    // FIX: Use @JsonBackReference to break the cycle
+    // Option 2: Use @JsonIgnoreProperties with specific fields to exclude
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "resident_id")
-    @JsonBackReference("resident-bins")
+    @JsonIgnoreProperties({"password", "pendingCharges", "recyclingCredits", "wasteBins"}) // Break circular reference
     private User resident;
 
     // FIX: Use @JsonIgnore for collections to avoid circular references

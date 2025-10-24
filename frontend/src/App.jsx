@@ -26,7 +26,8 @@ import CollectionReports from "./pages/admin/CollectionReports.jsx";
 import InvoicesPayments from "./pages/admin/InvoicesPayments.jsx";
 import BinMonitoring from "./pages/admin/BinMonitoring.jsx";
 import ScheduleManagement from "./pages/admin/ScheduleManagement.jsx";
-
+import PaymentSuccess from './pages/PaymentSuccess';
+import PaymentCancel from './pages/PaymentCancel';
 function App() {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -156,6 +157,9 @@ function App() {
                             <Route path="/bins" element={<Bins user={user} />} />
                             <Route path="/invoices" element={<Invoices user={user} />} />
                             <Route path="/payments" element={<Payments user={user} />} />
+                            {/* NEW PAYMENT ROUTES */}
+                            <Route path="/payment/success" element={<PaymentSuccess />} />
+                            <Route path="/payment/cancel" element={<PaymentCancel />} />
                         </Route>
                     )}
 

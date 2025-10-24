@@ -9,6 +9,7 @@ import com.CSSEProject.SmartWasteManagement.user.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class BillingService {
@@ -40,7 +41,7 @@ public class BillingService {
 
     public BillingModel updateBillingModel(Long modelId, BillingModelRequestDto requestDto) {
         BillingModel model = getBillingModelById(modelId);
-        
+
         model.setBillingType(requestDto.getBillingType());
         model.setRatePerKg(requestDto.getRatePerKg());
         model.setMonthlyFlatFee(requestDto.getMonthlyFlatFee());
@@ -51,13 +52,71 @@ public class BillingService {
         return billingModelRepository.save(model);
     }
 
+    // UPDATED: Now uses Optional from repository
+    public BillingModel getActiveBillingModelForCity(String city) {
+        System.out.println("🔍 Looking for active billing model for city: " + city);
+
+        Optional<BillingModel> modelOpt = billingModelRepository.findByCityAndActiveTrue(city);
+
+        if (modelOpt.isPresent()) {
+            BillingModel model = modelOpt.get();
+            System.out.println("✅ Found billing model for " + city + ": " + model.getBillingType() + " - Rate: $" + model.getRatePerKg() + "/kg");
+            return model;
+        } else {
+            System.out.println("❌ No active billing model found for city: " + city);
+
+            // Try to find any active model as fallback
+            List<BillingModel> anyActive = billingModelRepository.findByActiveTrue();
+            if (!anyActive.isEmpty()) {
+                BillingModel fallbackModel = anyActive.get(0);
+                System.out.println("🔄 Using fallback billing model: " + fallbackModel.getCity());
+                return fallbackModel;
+            }
+
+            System.out.println("💥 No active billing models found in system!");
+            return null;
+        }
+    }
+
+    // UPDATED: Uses Optional properly
     public BillingModel getActiveBillingModelForResident(Long residentId) {
-        User resident = userService.getUserById(residentId);
-        // In a real system, you'd determine city from resident's address
-        String city = extractCityFromAddress(resident.getAddress());
-        
-        return billingModelRepository.findByCityAndActiveTrue(city)
-                .orElseThrow(() -> new RuntimeException("No active billing model found for city: " + city));
+        try {
+            User resident = userService.getUserById(residentId);
+            String city = extractCityFromAddress(resident.getAddress());
+
+            System.out.println("🔍 Billing Model Lookup for Resident:");
+            System.out.println("   - Resident: " + resident.getName());
+            System.out.println("   - Address: " + resident.getAddress());
+            System.out.println("   - Extracted City: " + city);
+
+            Optional<BillingModel> modelOpt = billingModelRepository.findByCityAndActiveTrue(city);
+
+            if (modelOpt.isPresent()) {
+                BillingModel model = modelOpt.get();
+                System.out.println("✅ Found Billing Model:");
+                System.out.println("   - City: " + model.getCity());
+                System.out.println("   - Type: " + model.getBillingType());
+                System.out.println("   - Rate: $" + model.getRatePerKg() + "/kg");
+                System.out.println("   - Flat Fee: $" + model.getMonthlyFlatFee());
+                System.out.println("   - Base Fee: $" + model.getBaseFee());
+                System.out.println("   - Additional Rate: $" + model.getAdditionalRatePerKg() + "/kg");
+                return model;
+            } else {
+                // Try to find any active model as fallback
+                List<BillingModel> activeModels = billingModelRepository.findByActiveTrue();
+                if (!activeModels.isEmpty()) {
+                    BillingModel fallbackModel = activeModels.get(0);
+                    System.out.println("⚠️  No billing model for city '" + city + "', using fallback: " + fallbackModel.getCity());
+                    return fallbackModel;
+                } else {
+                    throw new RuntimeException("No active billing models found in system");
+                }
+            }
+
+        } catch (Exception e) {
+            System.err.println("❌ Error getting billing model for resident " + residentId + ": " + e.getMessage());
+            throw new RuntimeException("Billing configuration error: " + e.getMessage());
+        }
     }
 
     public BillingModel getBillingModelById(Long id) {
@@ -69,21 +128,117 @@ public class BillingService {
         return billingModelRepository.findByCity(city);
     }
 
-    public List<BillingModel> getActiveBillingModels() {
-        return billingModelRepository.findByActiveTrue();
-    }
-
     public BillingModel deactivateBillingModel(Long modelId) {
         BillingModel model = getBillingModelById(modelId);
         model.setActive(false);
         return billingModelRepository.save(model);
     }
 
+    public List<BillingModel> getActiveBillingModels() {
+        return billingModelRepository.findByActiveTrue();
+    }
+
+    // ENHANCED: Better city extraction with more Sri Lankan cities
     private String extractCityFromAddress(String address) {
-        // Simple extraction - in real system, use proper address parsing
-        if (address.toLowerCase().contains("colombo")) return "Colombo";
-        if (address.toLowerCase().contains("kandy")) return "Kandy";
-        if (address.toLowerCase().contains("gampaha")) return "Gampaha";
-        return "Default";
+        if (address == null || address.trim().isEmpty()) {
+            System.out.println("⚠️  Address is null or empty, using 'Colombo' as default");
+            return "Colombo";
+        }
+
+        String lowerAddress = address.toLowerCase().trim();
+        System.out.println("🔍 Extracting city from address: " + address);
+
+        // Comprehensive Sri Lankan cities list
+        String[] cities = {
+                "colombo", "kandy", "gampaha", "galle", "jaffna", "negombo",
+                "kurunegala", "anuradhapura", "ratnapura", "badulla", "matara",
+                "kegalle", "kalutara", "matale", "puttalam", "batticaloa", "trincomalee",
+                "hambantota", "vavuniya", "kilinochchi", "mannar", "nuwara eliya",
+                "polonnaruwa", "moneragala", "ampara", "mullaitivu"
+        };
+
+        for (String city : cities) {
+            if (lowerAddress.contains(city)) {
+                System.out.println("📍 Matched city: " + city);
+                return capitalizeWords(city);
+            }
+        }
+
+        // Try to extract city from common address formats
+        String[] parts = address.split(",");
+        if (parts.length > 1) {
+            // Usually format: "Street, City, Province"
+            String possibleCity = parts[parts.length - 2].trim();
+            System.out.println("📍 Extracted possible city from address format: " + possibleCity);
+            return possibleCity;
+        } else if (parts.length == 1) {
+            // Single part address, use the whole thing
+            System.out.println("📍 Using entire address as city: " + address.trim());
+            return address.trim();
+        }
+
+        System.out.println("⚠️  Could not extract city, using 'Colombo' as default");
+        return "Colombo";
+    }
+
+    // Helper method to capitalize city names
+    private String capitalizeWords(String text) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+
+        String[] words = text.split("\\s+");
+        StringBuilder result = new StringBuilder();
+
+        for (String word : words) {
+            if (!word.isEmpty()) {
+                result.append(Character.toUpperCase(word.charAt(0)))
+                        .append(word.substring(1).toLowerCase())
+                        .append(" ");
+            }
+        }
+
+        return result.toString().trim();
+    }
+
+    // DEBUG METHOD: Check all billing models
+    public void debugAllBillingModels() {
+        System.out.println("=== BILLING MODELS DEBUG ===");
+        List<BillingModel> allModels = billingModelRepository.findAll();
+
+        if (allModels.isEmpty()) {
+            System.out.println("❌ No billing models found in database!");
+        } else {
+            System.out.println("📋 Found " + allModels.size() + " billing models:");
+            for (BillingModel model : allModels) {
+                System.out.println("   - ID: " + model.getId() +
+                        ", City: " + model.getCity() +
+                        ", Type: " + model.getBillingType() +
+                        ", Rate: $" + model.getRatePerKg() + "/kg");
+            }
+        }
+
+        List<BillingModel> activeModels = billingModelRepository.findByActiveTrue();
+        System.out.println("✅ Active models: " + activeModels.size());
+
+        System.out.println("=== END DEBUG ===");
+    }
+
+    // TEST METHOD: Test city extraction for a specific resident
+    public void testResidentBilling(Long residentId) {
+        try {
+            User resident = userService.getUserById(residentId);
+            String city = extractCityFromAddress(resident.getAddress());
+            BillingModel model = getActiveBillingModelForResident(residentId);
+
+            System.out.println("🧪 TEST RESULT for Resident " + resident.getName() + ":");
+            System.out.println("   - Address: " + resident.getAddress());
+            System.out.println("   - Extracted City: " + city);
+            System.out.println("   - Billing Model: " + (model != null ?
+                    model.getCity() + " (" + model.getBillingType() + ")" : "NULL"));
+
+        } catch (Exception e) {
+            System.err.println("❌ Test failed: " + e.getMessage());
+        }
     }
 }

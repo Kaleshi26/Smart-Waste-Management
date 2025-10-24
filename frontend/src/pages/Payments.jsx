@@ -1,6 +1,7 @@
 // File: frontend/src/pages/Payments.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import toast from 'react-hot-toast';
 
 const Payments = ({ user }) => {
     const [payments, setPayments] = useState([]);
@@ -13,26 +14,62 @@ const Payments = ({ user }) => {
 
     const fetchPayments = async () => {
         try {
-            // Since we don't have a direct payments endpoint, we'll get invoices and extract payment info
-            const response = await axios.get(`http://localhost:8082/api/invoices/resident/${user.id}`);
-            const paidInvoices = response.data.filter(inv => inv.status === 'PAID');
+            console.log('🔄 Fetching payment history for user:', user.id);
 
-            // Transform invoices into payment records
+            // First, get all invoices for the user
+            const invoicesResponse = await axios.get(`http://localhost:8082/api/invoices/resident/${user.id}`);
+            const invoices = invoicesResponse.data;
+
+            console.log('✅ Invoices received:', invoices);
+
+            // Filter only PAID invoices and extract real payment data
+            const paidInvoices = invoices.filter(inv =>
+                inv.status === 'PAID' || inv.status === 'PAID'
+            );
+
+            console.log('💰 Paid invoices found:', paidInvoices);
+
+            // Transform paid invoices into proper payment records using REAL data
             const paymentRecords = paidInvoices.map(invoice => ({
                 id: invoice.id,
                 invoiceNumber: invoice.invoiceNumber,
-                amount: invoice.totalAmount,
-                paymentDate: invoice.invoiceDate, // Using invoice date as payment date for demo
-                paymentMethod: 'ONLINE', // Default for demo
+                amount: invoice.finalAmount || invoice.totalAmount,
+                paymentDate: invoice.paymentDate || invoice.invoiceDate, // Use actual payment date if available
+                paymentMethod: invoice.paymentMethod || 'ONLINE',
                 status: 'COMPLETED',
-                transactionId: `TXN-${invoice.id}-${invoice.invoiceNumber}`
+                transactionId: invoice.paymentReference || `PAY-${invoice.invoiceNumber}`,
+                // Include additional real data
+                periodStart: invoice.periodStart,
+                periodEnd: invoice.periodEnd,
+                baseCharge: invoice.baseCharge,
+                weightBasedCharge: invoice.weightBasedCharge,
+                recyclingCredits: invoice.recyclingCredits || invoice.refundAmount
             }));
 
+            console.log('📊 Payment records created:', paymentRecords);
             setPayments(paymentRecords);
+
         } catch (error) {
-            console.error('Error fetching payments:', error);
+            console.error('❌ Error fetching payments:', error);
+            console.error('Error details:', error.response?.data);
+            toast.error('Failed to load payment history');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchAllPayments = async () => {
+        try {
+            // If you have a dedicated payments endpoint, use this instead:
+            // const response = await axios.get(`http://localhost:8082/api/payments/user/${user.id}`);
+            // setPayments(response.data);
+
+            // For now, we'll use the invoices-based approach
+            await fetchPayments();
+            toast.success('Payments refreshed!');
+        } catch (error) {
+            console.error('Error refreshing payments:', error);
+            toast.error('Failed to refresh payments');
         }
     };
 
@@ -59,9 +96,71 @@ const Payments = ({ user }) => {
             DEBIT_CARD: '🏦',
             ONLINE_BANKING: '🌐',
             MOBILE_WALLET: '📱',
-            ONLINE: '💻'
+            ONLINE: '💻',
+            PAYHERE: '🔗',
+            CASH: '💵',
+            BANK_TRANSFER: '🏦'
         };
         return icons[method] || '💳';
+    };
+
+    const formatDate = (dateString) => {
+        if (!dateString) return 'N/A';
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+        } catch (error) {
+            return dateString;
+        }
+    };
+
+    const handleDownloadReceipt = (payment) => {
+        // Create a simple receipt download
+        const receiptContent = `
+            WASTE MANAGEMENT SERVICE - PAYMENT RECEIPT
+            ------------------------------------------
+            Invoice Number: ${payment.invoiceNumber}
+            Transaction ID: ${payment.transactionId}
+            Payment Date: ${formatDate(payment.paymentDate)}
+            Payment Method: ${payment.paymentMethod}
+            Amount: $${payment.amount.toFixed(2)}
+            Status: ${payment.status}
+            
+            Billing Period: ${payment.periodStart} to ${payment.periodEnd}
+            Base Charge: $${(payment.baseCharge || 0).toFixed(2)}
+            Weight Charge: $${(payment.weightBasedCharge || 0).toFixed(2)}
+            Recycling Credits: -$${(payment.recyclingCredits || 0).toFixed(2)}
+            
+            Thank you for your payment!
+        `;
+
+        const blob = new Blob([receiptContent], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `receipt-${payment.invoiceNumber}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        toast.success('Receipt downloaded!');
+    };
+
+    const handleViewDetails = (payment) => {
+        // Show payment details in a modal or alert
+        const details = `
+Invoice: ${payment.invoiceNumber}
+Amount: $${payment.amount.toFixed(2)}
+Date: ${formatDate(payment.paymentDate)}
+Method: ${payment.paymentMethod}
+Transaction: ${payment.transactionId}
+        `;
+        alert(details);
     };
 
     if (loading) {
@@ -81,9 +180,16 @@ const Payments = ({ user }) => {
                     <p>Track your payment transactions and receipts</p>
                 </div>
                 <div className="header-actions">
-          <span className="payment-count">
-            {payments.length} payment{payments.length !== 1 ? 's' : ''} total
-          </span>
+                    <button
+                        onClick={fetchAllPayments}
+                        className="btn btn-secondary"
+                        disabled={loading}
+                    >
+                        {loading ? 'Refreshing...' : 'Refresh Payments'}
+                    </button>
+                    <span className="payment-count">
+                        {payments.length} payment{payments.length !== 1 ? 's' : ''} total
+                    </span>
                 </div>
             </div>
 
@@ -112,11 +218,16 @@ const Payments = ({ user }) => {
                 </div>
 
                 <div className="stat-card">
-                    <div className="stat-title">Avg. Payment</div>
+                    <div className="stat-title">This Month</div>
                     <div className="stat-value">
-                        ${payments.length > 0 ? (payments.reduce((sum, p) => sum + p.amount, 0) / payments.length).toFixed(2) : '0.00'}
+                        {payments.filter(p => {
+                            const paymentDate = new Date(p.paymentDate);
+                            const now = new Date();
+                            return paymentDate.getMonth() === now.getMonth() &&
+                                paymentDate.getFullYear() === now.getFullYear();
+                        }).length}
                     </div>
-                    <div className="stat-change">Per transaction</div>
+                    <div className="stat-change">Recent payments</div>
                 </div>
             </div>
 
@@ -127,19 +238,13 @@ const Payments = ({ user }) => {
                         className={filter === 'all' ? 'active' : ''}
                         onClick={() => setFilter('all')}
                     >
-                        All Payments
+                        All Payments ({payments.length})
                     </button>
                     <button
                         className={filter === 'COMPLETED' ? 'active' : ''}
                         onClick={() => setFilter('COMPLETED')}
                     >
-                        Completed
-                    </button>
-                    <button
-                        className={filter === 'PENDING' ? 'active' : ''}
-                        onClick={() => setFilter('PENDING')}
-                    >
-                        Pending
+                        Completed ({payments.filter(p => p.status === 'COMPLETED').length})
                     </button>
                 </div>
             </div>
@@ -148,6 +253,11 @@ const Payments = ({ user }) => {
             <div className="card">
                 <div className="card-header">
                     <h3>Transaction History</h3>
+                    <div className="card-actions">
+                        <span className="text-muted">
+                            Showing {filteredPayments.length} of {payments.length} payments
+                        </span>
+                    </div>
                 </div>
 
                 {filteredPayments.length > 0 ? (
@@ -155,9 +265,9 @@ const Payments = ({ user }) => {
                         <table className="data-table">
                             <thead>
                             <tr>
-                                <th>Transaction ID</th>
                                 <th>Invoice #</th>
-                                <th>Date</th>
+                                <th>Transaction ID</th>
+                                <th>Payment Date</th>
                                 <th>Payment Method</th>
                                 <th>Amount</th>
                                 <th>Status</th>
@@ -168,34 +278,40 @@ const Payments = ({ user }) => {
                             {filteredPayments.map((payment) => (
                                 <tr key={payment.id}>
                                     <td>
-                                        <code>{payment.transactionId}</code>
-                                    </td>
-                                    <td>
                                         <strong>{payment.invoiceNumber}</strong>
                                     </td>
-                                    <td>{payment.paymentDate}</td>
+                                    <td>
+                                        <code className="transaction-id">{payment.transactionId}</code>
+                                    </td>
+                                    <td>{formatDate(payment.paymentDate)}</td>
                                     <td>
                                         <div className="payment-method-display">
-                        <span className="payment-icon">
-                          {getPaymentMethodIcon(payment.paymentMethod)}
-                        </span>
+                                                <span className="payment-icon">
+                                                    {getPaymentMethodIcon(payment.paymentMethod)}
+                                                </span>
                                             {payment.paymentMethod.replace(/_/g, ' ')}
                                         </div>
                                     </td>
                                     <td>
-                                        <strong>${(payment.amount || 0).toFixed(2)}</strong>
+                                        <strong className="amount-paid">
+                                            ${(payment.amount || 0).toFixed(2)}
+                                        </strong>
                                     </td>
                                     <td>{getStatusBadge(payment.status)}</td>
                                     <td>
                                         <div className="action-buttons">
-                                            <button className="btn btn-sm btn-secondary">
+                                            <button
+                                                className="btn btn-sm btn-secondary"
+                                                onClick={() => handleViewDetails(payment)}
+                                            >
+                                                Details
+                                            </button>
+                                            <button
+                                                className="btn btn-sm btn-primary"
+                                                onClick={() => handleDownloadReceipt(payment)}
+                                            >
                                                 Receipt
                                             </button>
-                                            {payment.status === 'COMPLETED' && (
-                                                <button className="btn btn-sm btn-secondary">
-                                                    Download
-                                                </button>
-                                            )}
                                         </div>
                                     </td>
                                 </tr>
@@ -215,6 +331,11 @@ const Payments = ({ user }) => {
                                 : `No ${filter.toLowerCase()} payments found.`
                             }
                         </p>
+                        {payments.length === 0 && (
+                            <div className="empty-state-actions">
+                                <p>Pay your pending invoices to see payment history here.</p>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -233,9 +354,9 @@ const Payments = ({ user }) => {
                             ).map(([method, count]) => (
                                 <div key={method} className="method-stat">
                                     <div className="method-info">
-                    <span className="method-icon">
-                      {getPaymentMethodIcon(method)}
-                    </span>
+                                        <span className="method-icon">
+                                            {getPaymentMethodIcon(method)}
+                                        </span>
                                         <span>{method.replace(/_/g, ' ')}</span>
                                     </div>
                                     <div className="method-count">
@@ -249,17 +370,32 @@ const Payments = ({ user }) => {
                     <div className="card">
                         <h3>Recent Activity</h3>
                         <div className="recent-activity">
-                            {payments.slice(0, 3).map((payment) => (
-                                <div key={payment.id} className="activity-item">
-                                    <div className="activity-icon success">✓</div>
-                                    <div className="activity-content">
-                                        <strong>Payment to {payment.invoiceNumber}</strong>
-                                        <p>${(payment.amount || 0).toFixed(2)} • {payment.paymentDate}</p>
+                            {payments
+                                .sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate))
+                                .slice(0, 5)
+                                .map((payment) => (
+                                    <div key={payment.id} className="activity-item">
+                                        <div className="activity-icon success">✓</div>
+                                        <div className="activity-content">
+                                            <strong>Payment: {payment.invoiceNumber}</strong>
+                                            <p>${(payment.amount || 0).toFixed(2)} • {formatDate(payment.paymentDate)}</p>
+                                            <small className="text-muted">{payment.transactionId}</small>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Debug Info - Remove in production */}
+            {process.env.NODE_ENV === 'development' && (
+                <div className="card debug-info">
+                    <h4>Debug Information</h4>
+                    <details>
+                        <summary>Show raw payment data</summary>
+                        <pre>{JSON.stringify(payments, null, 2)}</pre>
+                    </details>
                 </div>
             )}
         </div>

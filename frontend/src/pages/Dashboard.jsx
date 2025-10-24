@@ -25,6 +25,22 @@ const Dashboard = ({ user }) => {
         return () => clearInterval(interval);
     }, [user.id, autoRefresh]);
 
+    // ADD THIS FUNCTION: Normalize invoice data from backend
+    const normalizeInvoice = (invoice) => {
+        console.log('🔄 Normalizing invoice:', invoice.invoiceNumber);
+
+        return {
+            ...invoice,
+            // Map backend fields to frontend expected fields
+            recyclingCredits: invoice.refundAmount || invoice.recyclingCredits || 0,
+            weightBasedCharge: invoice.weightBasedCharge || 0,
+            baseCharge: invoice.baseCharge || 0,
+            totalAmount: invoice.finalAmount || invoice.totalAmount || 0,
+            // Ensure all required fields have values
+            otherCharges: invoice.otherCharges || 0
+        };
+    };
+
     const fetchDashboardData = async () => {
         try {
             setLoading(true);
@@ -41,7 +57,20 @@ const Dashboard = ({ user }) => {
 
             // Fetch user's invoices
             const invoicesResponse = await axios.get(`http://localhost:8082/api/invoices/resident/${user.id}`);
-            const userInvoices = invoicesResponse.data || [];
+            let userInvoices = invoicesResponse.data || [];
+
+            // 🎯 NORMALIZE the invoice data
+            userInvoices = userInvoices.map(normalizeInvoice);
+
+            // 🔍 DEBUG: Log invoice data for verification
+            if (userInvoices.length > 0) {
+                console.log('📊 Dashboard - First invoice after normalization:', {
+                    invoiceNumber: userInvoices[0].invoiceNumber,
+                    totalAmount: userInvoices[0].totalAmount,
+                    recyclingCredits: userInvoices[0].recyclingCredits,
+                    finalAmount: userInvoices[0].finalAmount
+                });
+            }
 
             // Fetch user's schedules
             try {
@@ -58,12 +87,17 @@ const Dashboard = ({ user }) => {
             setBins(userBins);
             setRecentInvoices(userInvoices.slice(0, 5));
 
-            // Calculate stats
+            // 🎯 CALCULATE STATS WITH NORMALIZED DATA
             const totalBins = userBins.length;
             const pendingInvoices = userInvoices.filter(inv => inv.status === 'PENDING').length;
+
+            // FIXED: Use normalized totalAmount for calculations
             const totalDue = userInvoices
                 .filter(inv => inv.status === 'PENDING')
                 .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
+
+            // 🎯 NEW: Calculate total recycling savings
+            const totalRecyclingSavings = userInvoices.reduce((sum, inv) => sum + (inv.recyclingCredits || 0), 0);
 
             // Calculate bins needing attention
             const binsNeedingAttention = userBins.filter(bin => {
@@ -71,12 +105,30 @@ const Dashboard = ({ user }) => {
                 return level >= 60;
             }).length;
 
+            // 🎯 NEW: Calculate monthly statistics
+            const currentMonth = new Date().getMonth();
+            const currentYear = new Date().getFullYear();
+
+            const monthlyInvoices = userInvoices.filter(inv => {
+                if (!inv.invoiceDate) return false;
+                const invoiceDate = new Date(inv.invoiceDate);
+                return invoiceDate.getMonth() === currentMonth && invoiceDate.getFullYear() === currentYear;
+            });
+
+            const monthlySpending = monthlyInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
+            const monthlySavings = monthlyInvoices.reduce((sum, inv) => sum + (inv.recyclingCredits || 0), 0);
+
             setStats({
                 totalBins,
                 pendingInvoices,
                 totalDue,
                 recentCollections: userBins.reduce((sum, bin) => sum + (bin.collections?.length || 0), 0),
-                binsNeedingAttention
+                binsNeedingAttention,
+                // 🎯 NEW STATS
+                totalRecyclingSavings,
+                monthlySpending,
+                monthlySavings,
+                totalInvoices: userInvoices.length
             });
 
             setLastUpdated(new Date());
@@ -109,6 +161,19 @@ const Dashboard = ({ user }) => {
         });
     };
 
+    const getStatusBadge = (status) => {
+        const statusConfig = {
+            PENDING: { class: 'pending', label: 'Pending' },
+            PAID: { class: 'paid', label: 'Paid' },
+            OVERDUE: { class: 'overdue', label: 'Overdue' },
+            PARTIALLY_PAID: { class: 'warning', label: 'Partial' },
+            CANCELLED: { class: 'inactive', label: 'Cancelled' }
+        };
+
+        const config = statusConfig[status] || { class: 'pending', label: status };
+        return <span className={`status-badge status-${config.class}`}>{config.label}</span>;
+    };
+
     if (loading && !lastUpdated) {
         return (
             <div className="loading-state">
@@ -133,7 +198,7 @@ const Dashboard = ({ user }) => {
                 )}
             </div>
 
-            {/* Stats Grid */}
+            {/* 🎯 UPDATED Stats Grid with Enhanced Metrics */}
             <div className="stats-grid">
                 <div className="stat-card">
                     <div className="stat-title">Active Bins</div>
@@ -153,10 +218,25 @@ const Dashboard = ({ user }) => {
                     <div className="stat-change">Outstanding balance</div>
                 </div>
 
+                {/* 🎯 NEW: Recycling Savings Card */}
                 <div className="stat-card success">
+                    <div className="stat-title">Recycling Savings</div>
+                    <div className="stat-value">${(stats.totalRecyclingSavings || 0).toFixed(2)}</div>
+                    <div className="stat-change">Total refunds earned</div>
+                </div>
+
+                {/* 🎯 NEW: Monthly Spending Card */}
+                <div className="stat-card info">
+                    <div className="stat-title">Monthly Spending</div>
+                    <div className="stat-value">${(stats.monthlySpending || 0).toFixed(2)}</div>
+                    <div className="stat-change">This month</div>
+                </div>
+
+                {/* 🎯 NEW: Total Collections Card */}
+                <div className="stat-card secondary">
                     <div className="stat-title">Collections</div>
                     <div className="stat-value">{stats.recentCollections || 0}</div>
-                    <div className="stat-change">This month</div>
+                    <div className="stat-change">All time</div>
                 </div>
             </div>
 
@@ -176,8 +256,25 @@ const Dashboard = ({ user }) => {
                 </div>
             )}
 
+            {/* 🎯 NEW: Financial Summary Alert */}
+            {stats.totalRecyclingSavings > 0 && (
+                <div className="alert alert-success">
+                    <div className="alert-icon">💰</div>
+                    <div className="alert-content">
+                        <strong>Great Job Recycling!</strong>
+                        <p>
+                            You've saved <strong>${stats.totalRecyclingSavings.toFixed(2)}</strong> through recycling credits.
+                            {stats.monthlySavings > 0 && ` $${stats.monthlySavings.toFixed(2)} saved this month alone!`}
+                        </p>
+                    </div>
+                    <Link to="/invoices" className="btn btn-sm btn-success">
+                        View Details
+                    </Link>
+                </div>
+            )}
+
             <div className="dashboard-grid">
-                {/* Recent Invoices */}
+                {/* Recent Invoices - UPDATED with better display */}
                 <div className="card">
                     <div className="card-header">
                         <h3>Recent Invoices</h3>
@@ -195,6 +292,7 @@ const Dashboard = ({ user }) => {
                             <tr>
                                 <th>Invoice #</th>
                                 <th>Amount</th>
+                                <th>Recycling Credits</th>
                                 <th>Due Date</th>
                                 <th>Status</th>
                             </tr>
@@ -205,7 +303,12 @@ const Dashboard = ({ user }) => {
                                     <td>
                                         <strong>{invoice.invoiceNumber}</strong>
                                     </td>
-                                    <td>${(invoice.totalAmount || 0).toFixed(2)}</td>
+                                    <td>
+                                        <strong>${(invoice.totalAmount || 0).toFixed(2)}</strong>
+                                    </td>
+                                    <td className="text-success">
+                                        {invoice.recyclingCredits > 0 ? `-$${invoice.recyclingCredits.toFixed(2)}` : '-'}
+                                    </td>
                                     <td>
                                         <span className={
                                             new Date(invoice.dueDate) < new Date() && invoice.status === 'PENDING'
@@ -216,9 +319,7 @@ const Dashboard = ({ user }) => {
                                         </span>
                                     </td>
                                     <td>
-                                        <span className={`status-badge status-${invoice.status?.toLowerCase()}`}>
-                                            {invoice.status}
-                                        </span>
+                                        {getStatusBadge(invoice.status)}
                                     </td>
                                 </tr>
                             ))}
@@ -254,6 +355,7 @@ const Dashboard = ({ user }) => {
                                     <div className="bin-info">
                                         <strong>{bin.binId}</strong>
                                         <span>{bin.location}</span>
+                                        <small>{bin.binType?.replace(/_/g, ' ')}</small>
                                     </div>
                                     <div className="bin-status">
                                         <div className="progress-bar">
@@ -262,7 +364,9 @@ const Dashboard = ({ user }) => {
                                                 style={{ width: `${bin.currentLevel || 0}%` }}
                                             ></div>
                                         </div>
-                                        <span>{bin.currentLevel || 0}% full</span>
+                                        <span className={`level-text ${getBinStatus(bin)}`}>
+                                            {bin.currentLevel || 0}% full
+                                        </span>
                                     </div>
                                 </div>
                             ))}
@@ -311,7 +415,12 @@ const Dashboard = ({ user }) => {
                         </div>
                         <div className="action-content">
                             <strong>Pay Invoice</strong>
-                            <p>View and pay pending bills</p>
+                            <p>
+                                {stats.pendingInvoices > 0
+                                    ? `${stats.pendingInvoices} pending - $${(stats.totalDue || 0).toFixed(2)} due`
+                                    : 'View and pay bills'
+                                }
+                            </p>
                         </div>
                     </Link>
 
@@ -323,7 +432,12 @@ const Dashboard = ({ user }) => {
                         </div>
                         <div className="action-content">
                             <strong>View Bins</strong>
-                            <p>Check bin status and history</p>
+                            <p>
+                                {stats.binsNeedingAttention > 0
+                                    ? `${stats.binsNeedingAttention} need attention`
+                                    : 'Check bin status and history'
+                                }
+                            </p>
                         </div>
                     </Link>
 
@@ -335,19 +449,15 @@ const Dashboard = ({ user }) => {
                         </div>
                         <div className="action-content">
                             <strong>Schedule Collection</strong>
-                            <p>Book waste collection</p>
+                            <p>Book waste collection pickup</p>
                         </div>
                     </Link>
 
-                    <Link to="/profile" className="action-card">
-                        <div className="action-icon">
-                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                        </div>
+                    <Link to="/invoices" className="action-card">
+                        <div className="action-icon">💰</div>
                         <div className="action-content">
-                            <strong>Update Profile</strong>
-                            <p>Manage your account details</p>
+                            <strong>Recycling Savings</strong>
+                            <p>You saved ${(stats.totalRecyclingSavings || 0).toFixed(2)}</p>
                         </div>
                     </Link>
                 </div>
