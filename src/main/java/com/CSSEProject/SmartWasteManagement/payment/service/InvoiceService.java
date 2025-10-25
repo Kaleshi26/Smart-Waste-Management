@@ -137,6 +137,17 @@ public class InvoiceService {
 
         return savedInvoice;
     }
+    // Add to your existing InvoiceService
+
+    public List<Invoice> getAllInvoices() {
+        return invoiceRepository.findAllWithResident(); // You'll need this method in repository
+    }
+
+    public Invoice updateInvoiceStatus(Long invoiceId, String status) {
+        Invoice invoice = getInvoiceById(invoiceId);
+        invoice.setStatus(InvoiceStatus.valueOf(status));
+        return invoiceRepository.save(invoice);
+    }
 
     public Invoice getInvoiceById(Long invoiceId) {
         return invoiceRepository.findById(invoiceId)

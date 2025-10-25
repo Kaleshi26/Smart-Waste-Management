@@ -28,6 +28,8 @@ import BinMonitoring from "./pages/admin/BinMonitoring.jsx";
 import ScheduleManagement from "./pages/admin/ScheduleManagement.jsx";
 import PaymentSuccess from './pages/PaymentSuccess';
 import PaymentCancel from './pages/PaymentCancel';
+import staffScanOffline from "./pages/StaffScanOffline.jsx";
+import StaffScanOffline from "./pages/StaffScanOffline.jsx";
 function App() {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -169,6 +171,7 @@ function App() {
                             <Route path="/staff/dashboard" element={<StaffDashboard user={user} />} />
                             <Route path="/staff/scan" element={<StaffScan user={user} />} />
                             <Route path="/staff/collections" element={<StaffCollections user={user} />} />
+                            <Route path="/staff/scan-offline" element={<StaffScanOffline user={user} />} />
                             <Route path="/staff/profile" element={<StaffProfile user={user} />} />
                             {/* Redirect staff users from regular dashboard to staff dashboard */}
                             <Route path="/dashboard" element={<Navigate to="/staff/dashboard" />} />

@@ -164,4 +164,47 @@ public class InvoiceController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
+    // Add to your existing InvoiceController
+
+    @GetMapping("/admin/all")
+    public ResponseEntity<?> getAllInvoices() {
+        try {
+            List<Invoice> invoices = invoiceService.getAllInvoices();
+            return ResponseEntity.ok(invoices);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/admin/pending")
+    public ResponseEntity<?> getPendingInvoicesAdmin() {
+        try {
+            List<Invoice> invoices = invoiceService.getPendingInvoices();
+            return ResponseEntity.ok(invoices);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/admin/overdue")
+    public ResponseEntity<?> getOverdueInvoicesAdmin() {
+        try {
+            List<Invoice> invoices = invoiceService.getOverdueInvoices();
+            return ResponseEntity.ok(invoices);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PutMapping("/admin/{invoiceId}/status")
+    public ResponseEntity<?> updateInvoiceStatus(@PathVariable Long invoiceId,
+                                                 @RequestBody Map<String, String> statusUpdate) {
+        try {
+            String status = statusUpdate.get("status");
+            Invoice invoice = invoiceService.updateInvoiceStatus(invoiceId, status);
+            return ResponseEntity.ok(invoice);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 }
