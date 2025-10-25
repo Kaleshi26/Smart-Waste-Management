@@ -159,4 +159,30 @@ class ReportingServiceTest {
         assertEquals("BIN-001", result.get(1).getWasteBin().getBinId());
         verify(collectionEventRepository).findByWasteBinBinId("BIN-001");
     }
+
+
+
+    @Test
+    void getDashboardStats_ShouldHandleZeroData_WhenNoCollectionsOrBinsExist() {
+        // Arrange - Empty database scenario
+        when(collectionEventRepository.findAll()).thenReturn(Arrays.asList());
+        when(wasteBinRepository.count()).thenReturn(0L);
+        when(wasteBinRepository.countByStatus(BinStatus.ACTIVE)).thenReturn(0L);
+
+        // Act
+        DashboardStatsDto result = reportingService.getDashboardStats();
+
+        // Assert - Should return zero values instead of null or errors
+        assertNotNull(result);
+        assertEquals(0, result.getTotalCollections());
+        assertEquals(0.0, result.getTotalWasteCollected(), 0.001);
+        assertEquals(0.0, result.getTotalRevenue(), 0.001);
+        assertEquals(0, result.getTotalBins());
+        assertEquals(0, result.getActiveBins());
+        verify(collectionEventRepository).findAll();
+        verify(wasteBinRepository).count();
+        verify(wasteBinRepository).countByStatus(BinStatus.ACTIVE);
+    }
+
+
 }
