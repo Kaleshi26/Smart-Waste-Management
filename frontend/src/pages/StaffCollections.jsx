@@ -2,6 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+<<<<<<< Updated upstream
+=======
+import ExcelJS from 'exceljs';
+>>>>>>> Stashed changes
 
 const StaffCollections = ({ user }) => {
     const [collections, setCollections] = useState([]);
@@ -60,6 +64,157 @@ const StaffCollections = ({ user }) => {
         }
     };
 
+<<<<<<< Updated upstream
+=======
+    // 🎯 NEW: Export to Excel function using ExcelJS
+    const exportToExcel = async () => {
+        setExporting(true);
+        try {
+            // Create a new workbook and worksheet
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Collection Records');
+
+            // Define columns
+            worksheet.columns = [
+                { header: 'Date', key: 'date', width: 12 },
+                { header: 'Time', key: 'time', width: 10 },
+                { header: 'Bin ID', key: 'binId', width: 15 },
+                { header: 'Location', key: 'location', width: 25 },
+                { header: 'Weight (kg)', key: 'weight', width: 12 },
+                { header: 'Charge ($)', key: 'charge', width: 12 },
+                { header: 'Recycling Refund ($)', key: 'refund', width: 18 },
+                { header: 'Net Amount ($)', key: 'netAmount', width: 15 },
+                { header: 'Status', key: 'status', width: 12 },
+                { header: 'Truck ID', key: 'truckId', width: 15 },
+                { header: 'Notes', key: 'notes', width: 30 }
+            ];
+
+            // Style the header row
+            worksheet.getRow(1).font = { bold: true };
+            worksheet.getRow(1).fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFE6E6FA' }
+            };
+
+            // Add data rows
+            filteredCollections.forEach(collection => {
+                worksheet.addRow({
+                    date: new Date(collection.collectionTime).toLocaleDateString(),
+                    time: new Date(collection.collectionTime).toLocaleTimeString(),
+                    binId: collection.binId || collection.wasteBin?.binId || 'N/A',
+                    location: collection.location || collection.wasteBin?.location || 'Unknown',
+                    weight: collection.weight,
+                    charge: collection.calculatedCharge?.toFixed(2),
+                    refund: collection.recyclingRefund?.toFixed(2),
+                    netAmount: ((collection.calculatedCharge || 0) - (collection.recyclingRefund || 0)).toFixed(2),
+                    status: 'Completed',
+                    truckId: collection.truckId || 'N/A',
+                    notes: collection.notes || ''
+                });
+            });
+
+            // Auto-fit columns
+            worksheet.columns.forEach(column => {
+                column.width = Math.max(column.width || 10, 10);
+            });
+
+            // Generate filename with date
+            const filename = `collections_report_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+            // Export to Excel
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.click();
+            window.URL.revokeObjectURL(url);
+
+            toast.success('Report downloaded successfully!');
+        } catch (error) {
+            console.error('Error exporting to Excel:', error);
+            toast.error('Failed to download report');
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    // 🎯 NEW: Export to PDF function
+    const exportToPDF = () => {
+        toast.success('PDF export feature coming soon!');
+        // You can implement PDF export using libraries like jspdf or pdfmake
+    };
+
+    // 🎯 NEW: Export summary statistics using ExcelJS
+    const exportSummaryReport = async () => {
+        setExporting(true);
+        try {
+            // Create a new workbook and worksheet
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Summary Report');
+
+            // Define columns for summary data
+            worksheet.columns = [
+                { header: 'Metric', key: 'metric', width: 30 },
+                { header: 'Value', key: 'value', width: 20 }
+            ];
+
+            // Style the header row
+            worksheet.getRow(1).font = { bold: true };
+            worksheet.getRow(1).fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFE6E6FA' }
+            };
+
+            // Add summary data
+            const summaryData = [
+                { metric: 'Report Period', value: `${dateRange.start} to ${dateRange.end}` },
+                { metric: 'Total Collections', value: filteredCollections.length },
+                { metric: 'Total Weight (kg)', value: getTotalWeight().toFixed(1) },
+                { metric: 'Total Revenue ($)', value: getTotalRevenue().toFixed(2) },
+                { metric: 'Total Recycling Refunds ($)', value: getTotalRecyclingRefunds().toFixed(2) },
+                { metric: 'Net Revenue ($)', value: getNetRevenue().toFixed(2) },
+                { metric: 'Average Weight per Collection (kg)', value: getPerformanceMetrics().avgWeight.toFixed(1) },
+                { metric: 'Collections with Recycling', value: getCollectionsWithRecycling().length },
+                { metric: 'Generated By', value: user.name },
+                { metric: 'Generated On', value: new Date().toLocaleString() }
+            ];
+
+            summaryData.forEach(row => {
+                worksheet.addRow(row);
+            });
+
+            // Auto-fit columns
+            worksheet.columns.forEach(column => {
+                column.width = Math.max(column.width || 10, 10);
+            });
+
+            // Generate filename with date
+            const filename = `collections_summary_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+            // Export to Excel
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.click();
+            window.URL.revokeObjectURL(url);
+
+            toast.success('Summary report downloaded!');
+        } catch (error) {
+            console.error('Error exporting summary:', error);
+            toast.error('Failed to download summary report');
+        } finally {
+            setExporting(false);
+        }
+    };
+
+>>>>>>> Stashed changes
     const filteredCollections = collections.filter(collection => {
         if (filter === 'all') return true;
         if (filter === 'today') {
