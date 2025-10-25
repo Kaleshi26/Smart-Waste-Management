@@ -118,6 +118,185 @@ const Payments = ({ user }) => {
         }
     };
 
+    const handleDownloadReceipt = async (payment) => {
+        try {
+            // Generate PDF receipt
+            const { jsPDF } = await import('jspdf');
+
+            // Create new PDF document
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const margin = 20;
+            let yPosition = margin;
+
+            // Add company header
+            doc.setFontSize(20);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(33, 150, 83); // Green color
+            doc.text('WASTE MANAGEMENT SERVICE', pageWidth / 2, yPosition, { align: 'center' });
+
+            yPosition += 10;
+            doc.setFontSize(12);
+            doc.setTextColor(100, 100, 100);
+            doc.text('PAYMENT RECEIPT', pageWidth / 2, yPosition, { align: 'center' });
+
+            yPosition += 15;
+
+            // Add receipt details section
+            doc.setDrawColor(200, 200, 200);
+            doc.line(margin, yPosition, pageWidth - margin, yPosition);
+            yPosition += 10;
+
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(0, 0, 0);
+            doc.text('RECEIPT DETAILS', margin, yPosition);
+            yPosition += 15;
+
+            // Receipt information
+            const receiptDetails = [
+                { label: 'Invoice Number:', value: payment.invoiceNumber },
+                { label: 'Transaction ID:', value: payment.transactionId },
+                { label: 'Payment Date:', value: formatDate(payment.paymentDate) },
+                { label: 'Payment Method:', value: payment.paymentMethod.replace(/_/g, ' ') },
+                { label: 'Amount Paid:', value: `$${payment.amount.toFixed(2)}` },
+                { label: 'Status:', value: payment.status }
+            ];
+
+            receiptDetails.forEach(detail => {
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(0, 0, 0);
+                doc.text(detail.label, margin, yPosition);
+
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(100, 100, 100);
+                doc.text(detail.value, margin + 60, yPosition);
+                yPosition += 8;
+            });
+
+            yPosition += 10;
+
+            // Add billing period section
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(0, 0, 0);
+            doc.text('BILLING PERIOD', margin, yPosition);
+            yPosition += 15;
+
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100, 100, 100);
+            doc.text(`${payment.periodStart} to ${payment.periodEnd}`, margin, yPosition);
+            yPosition += 15;
+
+            // Add charges breakdown section
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(0, 0, 0);
+            doc.text('CHARGES BREAKDOWN', margin, yPosition);
+            yPosition += 15;
+
+            const charges = [
+                { label: 'Base Service Charge:', amount: payment.baseCharge || 0 },
+                { label: 'Weight-Based Charge:', amount: payment.weightBasedCharge || 0 },
+                { label: 'Recycling Credits:', amount: -(payment.recyclingCredits || 0) },
+                { label: 'TOTAL AMOUNT:', amount: payment.amount }
+            ];
+
+            charges.forEach((charge, index) => {
+                const isTotal = index === charges.length - 1;
+                const isCredit = charge.amount < 0;
+
+                if (isTotal) {
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(0, 0, 0);
+                    yPosition += 5;
+                    doc.line(margin, yPosition - 2, pageWidth - margin, yPosition - 2);
+                    yPosition += 8;
+                } else {
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(100, 100, 100);
+                }
+
+                if (isCredit) {
+                    doc.setTextColor(33, 150, 83); // Green for credits
+                }
+
+                doc.text(charge.label, margin, yPosition);
+
+                const amountText = isCredit ?
+                    `-$${Math.abs(charge.amount).toFixed(2)}` :
+                    `$${charge.amount.toFixed(2)}`;
+
+                doc.text(amountText, pageWidth - margin - 30, yPosition, { align: 'right' });
+                yPosition += 8;
+            });
+
+            yPosition += 15;
+
+            // Add thank you message
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'italic');
+            doc.setTextColor(150, 150, 150);
+            doc.text('Thank you for choosing our waste management services!', pageWidth / 2, yPosition, { align: 'center' });
+
+            yPosition += 8;
+            doc.text('This receipt is proof of your payment.', pageWidth / 2, yPosition, { align: 'center' });
+
+            // Add footer
+            const footerY = doc.internal.pageSize.getHeight() - 20;
+            doc.setFontSize(8);
+            doc.setTextColor(200, 200, 200);
+            doc.text(`Generated on ${new Date().toLocaleDateString()}`, pageWidth / 2, footerY, { align: 'center' });
+            doc.text(`Receipt ID: ${payment.transactionId}`, pageWidth / 2, footerY + 5, { align: 'center' });
+
+            // Save the PDF
+            doc.save(`receipt-${payment.invoiceNumber}.pdf`);
+
+            toast.success('PDF receipt downloaded!');
+
+        } catch (error) {
+            console.error('Error generating PDF receipt:', error);
+
+            // Fallback to text receipt if PDF generation fails
+            const receiptContent = `
+WASTE MANAGEMENT SERVICE - PAYMENT RECEIPT
+===========================================
+
+RECEIPT DETAILS:
+----------------
+Invoice Number: ${payment.invoiceNumber}
+Transaction ID: ${payment.transactionId}
+Payment Date: ${formatDate(payment.paymentDate)}
+Payment Method: ${payment.paymentMethod}
+Amount: $${payment.amount.toFixed(2)}
+Status: ${payment.status}
+
+BILLING PERIOD:
+---------------
+${payment.periodStart} to ${payment.periodEnd}
+
+CHARGES BREAKDOWN:
+------------------
+Base Charge: $${(payment.baseCharge || 0).toFixed(2)}
+Weight Charge: $${(payment.weightBasedCharge || 0).toFixed(2)}
+Recycling Credits: -$${(payment.recyclingCredits || 0).toFixed(2)}
+TOTAL AMOUNT: $${payment.amount.toFixed(2)}
+
+Thank you for your payment!
+Generated on ${new Date().toLocaleDateString()}
+            `;
+
+            const blob = new Blob([receiptContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `receipt-${payment.invoiceNumber}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            toast.success('Text receipt downloaded (PDF failed)');
+        }
+    };
 
     // Alternative PDF generation using html2canvas and jsPDF (more advanced)
     const handleDownloadReceiptAdvanced = async (payment) => {
