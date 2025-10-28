@@ -23,10 +23,6 @@ public class CollectionSchedule {
     @Column(nullable = false)
     private LocalDate scheduledDate;
 
-    // REMOVED: scheduledTime field - keeping only date
-    // @Column(nullable = false)
-    // private LocalTime scheduledTime;
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ScheduleStatus status = ScheduleStatus.PENDING;
