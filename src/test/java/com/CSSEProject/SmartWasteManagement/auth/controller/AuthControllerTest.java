@@ -1,4 +1,3 @@
-// Testing AuthController REST endpoints with MockMvc standalone setup
 package com.CSSEProject.SmartWasteManagement.auth.controller;
 
 import com.CSSEProject.SmartWasteManagement.controller.AuthController;
@@ -7,15 +6,15 @@ import com.CSSEProject.SmartWasteManagement.user.entity.User;
 import com.CSSEProject.SmartWasteManagement.user.entity.UserRole;
 import com.CSSEProject.SmartWasteManagement.user.service.UserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.MockitoAnnotations;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -23,11 +22,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * Unit tests for AuthController using MockMvc in standalone mode.
- * Tests REST endpoints without full Spring context for fast execution.
+ * Unit tests for AuthController using MockMvc in standalone mode with TestNG.
  */
-@ExtendWith(MockitoExtension.class)
-class AuthControllerTest {
+public class AuthControllerTest {
 
     @Mock
     private UserService userService;
@@ -37,15 +34,25 @@ class AuthControllerTest {
 
     private MockMvc mockMvc;
     private ObjectMapper objectMapper;
+    private AutoCloseable mocks;
 
-    @BeforeEach
-    void setUp() {
+    @BeforeMethod
+    public void setUp() {
+        // This line replaces the JUnit @ExtendWith(MockitoExtension.class)
+        mocks = MockitoAnnotations.openMocks(this);
         mockMvc = MockMvcBuilders.standaloneSetup(authController).build();
         objectMapper = new ObjectMapper();
     }
 
+    @AfterMethod
+    public void tearDown() throws Exception {
+        if (mocks != null) {
+            mocks.close();
+        }
+    }
+
     @Test
-    void registerUser_ShouldReturn200_WhenValidRequest() throws Exception {
+    public void registerUser_ShouldReturn200_WhenValidRequest() throws Exception {
         // Arrange
         RegisterRequestDto registerRequest = new RegisterRequestDto();
         registerRequest.setName("John Doe");
@@ -65,8 +72,8 @@ class AuthControllerTest {
 
         // Act & Assert
         mockMvc.perform(post("/api/auth/register")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(registerRequest)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("User registered successfully"))
                 .andExpect(jsonPath("$.user.name").value("John Doe"))
