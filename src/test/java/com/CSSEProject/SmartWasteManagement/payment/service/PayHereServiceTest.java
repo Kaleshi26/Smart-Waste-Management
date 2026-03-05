@@ -1,25 +1,26 @@
 package com.CSSEProject.SmartWasteManagement.payment.service;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.MockitoAnnotations;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-@ExtendWith(MockitoExtension.class)
-class PayHereServiceTest {
+public class PayHereServiceTest {
 
     @InjectMocks
     private PayHereService payHereService;
 
-    @BeforeEach
-    void setUp() {
+    private AutoCloseable mocks;
+
+    @BeforeMethod
+    public void setUp() {
+        mocks = MockitoAnnotations.openMocks(this);
         // Set up test configuration using reflection
         ReflectionTestUtils.setField(payHereService, "merchantId", "1211144");
         ReflectionTestUtils.setField(payHereService, "merchantSecret", "MjAzNDE4MjU4MzM4NDc4MzE3MTE2MTQ0NDU0NDA3NDE4OTg0OA");
@@ -28,8 +29,15 @@ class PayHereServiceTest {
         ReflectionTestUtils.setField(payHereService, "backendUrl", "http://localhost:8082");
     }
 
+    @AfterMethod
+    public void tearDown() throws Exception {
+        if (mocks != null) {
+            mocks.close();
+        }
+    }
+
     @Test
-    void generateMD5_WithValidInput_ShouldReturnCorrectHash() {
+    public void generateMD5_WithValidInput_ShouldReturnCorrectHash() {
         // Arrange
         String input = "test123";
 
@@ -37,12 +45,12 @@ class PayHereServiceTest {
         String result = payHereService.generateMD5(input);
 
         // Assert
-        assertNotNull(result);
-        assertEquals(32, result.length()); // MD5 hash should be 32 characters
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.length(), 32); // MD5 hash should be 32 characters
     }
 
     @Test
-    void generateMD5_WithEmptyString_ShouldReturnValidHash() {
+    public void generateMD5_WithEmptyString_ShouldReturnValidHash() {
         // Arrange
         String input = "";
 
@@ -50,12 +58,12 @@ class PayHereServiceTest {
         String result = payHereService.generateMD5(input);
 
         // Assert
-        assertNotNull(result);
-        assertEquals(32, result.length());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.length(), 32);
     }
 
     @Test
-    void generateMD5_WithSpecialCharacters_ShouldReturnValidHash() {
+    public void generateMD5_WithSpecialCharacters_ShouldReturnValidHash() {
         // Arrange
         String input = "hello@world#123";
 
@@ -63,12 +71,12 @@ class PayHereServiceTest {
         String result = payHereService.generateMD5(input);
 
         // Assert
-        assertNotNull(result);
-        assertEquals(32, result.length());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.length(), 32);
     }
 
     @Test
-    void generatePaymentHash_WithValidData_ShouldReturnCorrectHash() {
+    public void generatePaymentHash_WithValidData_ShouldReturnCorrectHash() {
         // Arrange
         String orderId = "INV-001";
         double amount = 15000.00;
@@ -78,12 +86,12 @@ class PayHereServiceTest {
         String result = payHereService.generatePaymentHash(orderId, amount, currency);
 
         // Assert
-        assertNotNull(result);
-        assertEquals(32, result.length());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.length(), 32);
     }
 
     @Test
-    void generatePaymentHash_WithZeroAmount_ShouldReturnValidHash() {
+    public void generatePaymentHash_WithZeroAmount_ShouldReturnValidHash() {
         // Arrange
         String orderId = "INV-002";
         double amount = 0.00;
@@ -93,12 +101,12 @@ class PayHereServiceTest {
         String result = payHereService.generatePaymentHash(orderId, amount, currency);
 
         // Assert
-        assertNotNull(result);
-        assertEquals(32, result.length());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.length(), 32);
     }
 
     @Test
-    void generatePaymentHash_WithDecimalAmount_ShouldFormatCorrectly() {
+    public void generatePaymentHash_WithDecimalAmount_ShouldFormatCorrectly() {
         // Arrange
         String orderId = "INV-003";
         double amount = 1234.56;
@@ -108,11 +116,11 @@ class PayHereServiceTest {
         String result = payHereService.generatePaymentHash(orderId, amount, currency);
 
         // Assert
-        assertNotNull(result);
+        Assert.assertNotNull(result);
     }
 
     @Test
-    void verifyWebhookSignature_WithInvalidHash_ShouldReturnFalse() {
+    public void verifyWebhookSignature_WithInvalidHash_ShouldReturnFalse() {
         // Arrange
         Map<String, String> paymentData = new HashMap<>();
         paymentData.put("merchant_id", "1211144");
@@ -126,11 +134,11 @@ class PayHereServiceTest {
         boolean result = payHereService.verifyWebhookSignature(paymentData);
 
         // Assert
-        assertFalse(result);
+        Assert.assertFalse(result);
     }
 
     @Test
-    void verifyWebhookSignature_WithMissingFields_ShouldReturnFalse() {
+    public void verifyWebhookSignature_WithMissingFields_ShouldReturnFalse() {
         // Arrange
         Map<String, String> paymentData = new HashMap<>();
         paymentData.put("merchant_id", "1211144");
@@ -141,20 +149,20 @@ class PayHereServiceTest {
         boolean result = payHereService.verifyWebhookSignature(paymentData);
 
         // Assert
-        assertFalse(result);
+        Assert.assertFalse(result);
     }
 
     @Test
-    void verifyWebhookSignature_WithNullData_ShouldReturnFalse() {
+    public void verifyWebhookSignature_WithNullData_ShouldReturnFalse() {
         // Act
         boolean result = payHereService.verifyWebhookSignature(null);
 
         // Assert
-        assertFalse(result);
+        Assert.assertFalse(result);
     }
 
     @Test
-    void getCheckoutUrl_InSandboxMode_ShouldReturnSandboxUrl() {
+    public void getCheckoutUrl_InSandboxMode_ShouldReturnSandboxUrl() {
         // Arrange
         ReflectionTestUtils.setField(payHereService, "payhereMode", "sandbox");
 
@@ -162,11 +170,11 @@ class PayHereServiceTest {
         String result = payHereService.getCheckoutUrl();
 
         // Assert
-        assertEquals("https://sandbox.payhere.lk/pay/checkout", result);
+        Assert.assertEquals(result, "https://sandbox.payhere.lk/pay/checkout");
     }
 
     @Test
-    void getCheckoutUrl_InProductionMode_ShouldReturnProductionUrl() {
+    public void getCheckoutUrl_InProductionMode_ShouldReturnProductionUrl() {
         // Arrange
         ReflectionTestUtils.setField(payHereService, "payhereMode", "production");
 
@@ -174,11 +182,11 @@ class PayHereServiceTest {
         String result = payHereService.getCheckoutUrl();
 
         // Assert
-        assertEquals("https://www.payhere.lk/pay/checkout", result);
+        Assert.assertEquals(result, "https://www.payhere.lk/pay/checkout");
     }
 
     @Test
-    void preparePaymentData_WithValidInput_ShouldIncludeAllRequiredFields() {
+    public void preparePaymentData_WithValidInput_ShouldIncludeAllRequiredFields() {
         // Arrange
         String orderId = "INV-001";
         String items = "Waste Management Service";
@@ -200,17 +208,17 @@ class PayHereServiceTest {
         );
 
         // Assert
-        assertNotNull(result);
-        assertEquals("1211144", result.get("merchant_id"));
-        assertEquals("INV-001", result.get("order_id"));
-        assertEquals("Waste Management Service", result.get("items"));
-        assertEquals("LKR", result.get("currency"));
-        assertEquals("15000.00", result.get("amount"));
-        assertNotNull(result.get("hash"));
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.get("merchant_id"), "1211144");
+        Assert.assertEquals(result.get("order_id"), "INV-001");
+        Assert.assertEquals(result.get("items"), "Waste Management Service");
+        Assert.assertEquals(result.get("currency"), "LKR");
+        Assert.assertEquals(result.get("amount"), "15000.00");
+        Assert.assertNotNull(result.get("hash"));
     }
 
     @Test
-    void preparePaymentData_WithNullCustomerInfo_ShouldStillWork() {
+    public void preparePaymentData_WithNullCustomerInfo_ShouldStillWork() {
         // Arrange
         String orderId = "INV-002";
         String items = "Waste Management Service";
@@ -223,61 +231,61 @@ class PayHereServiceTest {
         );
 
         // Assert
-        assertNotNull(result);
-        assertEquals("1211144", result.get("merchant_id"));
-        assertEquals("INV-002", result.get("order_id"));
-        assertEquals("20000.00", result.get("amount"));
-        assertNotNull(result.get("hash"));
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.get("merchant_id"), "1211144");
+        Assert.assertEquals(result.get("order_id"), "INV-002");
+        Assert.assertEquals(result.get("amount"), "20000.00");
+        Assert.assertNotNull(result.get("hash"));
     }
 
     @Test
-    void getStatusDescription_WithValidStatusCodes_ShouldReturnCorrectDescriptions() {
+    public void getStatusDescription_WithValidStatusCodes_ShouldReturnCorrectDescriptions() {
         // Test all known status codes
-        assertEquals("SUCCESS", payHereService.getStatusDescription("2"));
-        assertEquals("PENDING", payHereService.getStatusDescription("0"));
-        assertEquals("CANCELED", payHereService.getStatusDescription("-1"));
-        assertEquals("FAILED", payHereService.getStatusDescription("-2"));
-        assertEquals("CHARGEBACK", payHereService.getStatusDescription("-3"));
+        Assert.assertEquals(payHereService.getStatusDescription("2"), "SUCCESS");
+        Assert.assertEquals(payHereService.getStatusDescription("0"), "PENDING");
+        Assert.assertEquals(payHereService.getStatusDescription("-1"), "CANCELED");
+        Assert.assertEquals(payHereService.getStatusDescription("-2"), "FAILED");
+        Assert.assertEquals(payHereService.getStatusDescription("-3"), "CHARGEBACK");
     }
 
     @Test
-    void getStatusDescription_WithUnknownStatusCode_ShouldReturnUnknown() {
+    public void getStatusDescription_WithUnknownStatusCode_ShouldReturnUnknown() {
         // Act
         String result = payHereService.getStatusDescription("999");
 
         // Assert
-        assertEquals("UNKNOWN", result);
+        Assert.assertEquals(result, "UNKNOWN");
     }
 
     @Test
-    void getStatusDescription_WithNullStatusCode_ShouldReturnUnknown() {
+    public void getStatusDescription_WithNullStatusCode_ShouldReturnUnknown() {
         // Act
         String result = payHereService.getStatusDescription(null);
 
         // Assert
-        assertEquals("UNKNOWN", result);
+        Assert.assertEquals(result, "UNKNOWN");
     }
 
     @Test
-    void getMerchantId_ShouldReturnConfiguredValue() {
+    public void getMerchantId_ShouldReturnConfiguredValue() {
         // Act
         String result = payHereService.getMerchantId();
 
         // Assert
-        assertEquals("1211144", result);
+        Assert.assertEquals(result, "1211144");
     }
 
     @Test
-    void getMerchantSecret_ShouldReturnConfiguredValue() {
+    public void getMerchantSecret_ShouldReturnConfiguredValue() {
         // Act
         String result = payHereService.getMerchantSecret();
 
         // Assert
-        assertEquals("MjAzNDE4MjU4MzM4NDc4MzE3MTE2MTQ0NDU0NDA3NDE4OTg0OA", result);
+        Assert.assertEquals(result, "MjAzNDE4MjU4MzM4NDc4MzE3MTE2MTQ0NDU0NDA3NDE4OTg0OA");
     }
 
     @Test
-    void generatePaymentHash_ConsistencyTest_SameInputShouldProduceSameHash() {
+    public void generatePaymentHash_ConsistencyTest_SameInputShouldProduceSameHash() {
         // Arrange
         String orderId = "CONSISTENCY-TEST";
         double amount = 1000.00;
@@ -288,11 +296,11 @@ class PayHereServiceTest {
         String hash2 = payHereService.generatePaymentHash(orderId, amount, currency);
 
         // Assert
-        assertEquals(hash1, hash2); // Same input should produce same hash
+        Assert.assertEquals(hash1, hash2); // Same input should produce same hash
     }
 
     @Test
-    void generatePaymentHash_DifferentInputsShouldProduceDifferentHashes() {
+    public void generatePaymentHash_DifferentInputsShouldProduceDifferentHashes() {
         // Arrange
         String orderId1 = "ORDER-001";
         String orderId2 = "ORDER-002";
@@ -304,11 +312,11 @@ class PayHereServiceTest {
         String hash2 = payHereService.generatePaymentHash(orderId2, amount, currency);
 
         // Assert
-        assertNotEquals(hash1, hash2); // Different order IDs should produce different hashes
+        Assert.assertNotEquals(hash1, hash2); // Different order IDs should produce different hashes
     }
 
     @Test
-    void preparePaymentData_AmountFormatting_ShouldAlwaysHaveTwoDecimals() {
+    public void preparePaymentData_AmountFormatting_ShouldAlwaysHaveTwoDecimals() {
         // Arrange
         String orderId = "FORMAT-TEST";
         double amount = 1500.5; // One decimal
@@ -320,6 +328,6 @@ class PayHereServiceTest {
         );
 
         // Assert
-        assertEquals("1500.50", result.get("amount")); // Should be formatted to 2 decimals
+        Assert.assertEquals(result.get("amount"), "1500.50"); // Should be formatted to 2 decimals
     }
 }
