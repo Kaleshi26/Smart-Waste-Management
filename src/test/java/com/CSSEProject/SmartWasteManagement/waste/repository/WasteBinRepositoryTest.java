@@ -1,4 +1,3 @@
-// Testing WasteBinRepository with @DataJpaTest and H2 in-memory database
 package com.CSSEProject.SmartWasteManagement.waste.repository;
 
 import com.CSSEProject.SmartWasteManagement.user.entity.User;
@@ -6,24 +5,23 @@ import com.CSSEProject.SmartWasteManagement.user.entity.UserRole;
 import com.CSSEProject.SmartWasteManagement.waste.entity.BinStatus;
 import com.CSSEProject.SmartWasteManagement.waste.entity.BinType;
 import com.CSSEProject.SmartWasteManagement.waste.entity.WasteBin;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.test.context.testng.AbstractTransactionalTestNGSpringContextTests;
+import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
- * Integration tests for WasteBinRepository using @DataJpaTest with H2 database.
- * Tests JPA repository methods with actual database operations in test environment.
+ * Integration tests for WasteBinRepository using @DataJpaTest with H2 database and TestNG.
  */
 @DataJpaTest
-class WasteBinRepositoryTest {
+public class WasteBinRepositoryTest extends AbstractTransactionalTestNGSpringContextTests {
 
     @Autowired
     private TestEntityManager entityManager;
@@ -34,8 +32,8 @@ class WasteBinRepositoryTest {
     private User testResident;
     private WasteBin testBin;
 
-    @BeforeEach
-    void setUp() {
+    @BeforeMethod
+    public void setUp() {
         // Arrange - Setup test data
         testResident = new User();
         testResident.setName("Test Resident");
@@ -56,48 +54,48 @@ class WasteBinRepositoryTest {
     }
 
     @Test
-    void findByBinId_ShouldReturnBin_WhenBinExists() {
+    public void findByBinId_ShouldReturnBin_WhenBinExists() {
         // Act
         Optional<WasteBin> result = wasteBinRepository.findById("TEST-BIN-001");
 
         // Assert
-        assertTrue(result.isPresent());
-        assertEquals("TEST-BIN-001", result.get().getBinId());
-        assertEquals("Test Location", result.get().getLocation());
-        assertEquals(BinType.GENERAL_WASTE, result.get().getBinType());
-        assertEquals(BinStatus.ACTIVE, result.get().getStatus());
+        Assert.assertTrue(result.isPresent());
+        Assert.assertEquals(result.get().getBinId(), "TEST-BIN-001");
+        Assert.assertEquals(result.get().getLocation(), "Test Location");
+        Assert.assertEquals(result.get().getBinType(), BinType.GENERAL_WASTE);
+        Assert.assertEquals(result.get().getStatus(), BinStatus.ACTIVE);
     }
 
     @Test
-    void findByResidentId_ShouldReturnBins_WhenResidentHasBins() {
+    public void findByResidentId_ShouldReturnBins_WhenResidentHasBins() {
         // Act
         List<WasteBin> result = wasteBinRepository.findByResidentId(testResident.getId());
 
         // Assert
-        assertNotNull(result);
-        assertEquals(1, result.size());
-        assertEquals("TEST-BIN-001", result.get(0).getBinId());
-        assertEquals(testResident.getId(), result.get(0).getResident().getId());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.size(), 1);
+        Assert.assertEquals(result.get(0).getBinId(), "TEST-BIN-001");
+        Assert.assertEquals(result.get(0).getResident().getId(), testResident.getId());
     }
 
     @Test
-    void findByStatus_ShouldReturnBins_WhenBinsWithStatusExist() {
+    public void findByStatus_ShouldReturnBins_WhenBinsWithStatusExist() {
         // Act
         List<WasteBin> result = wasteBinRepository.findByStatus(BinStatus.ACTIVE);
 
         // Assert
-        assertNotNull(result);
-        assertEquals(1, result.size());
-        assertEquals(BinStatus.ACTIVE, result.get(0).getStatus());
-        assertEquals("TEST-BIN-001", result.get(0).getBinId());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.size(), 1);
+        Assert.assertEquals(result.get(0).getStatus(), BinStatus.ACTIVE);
+        Assert.assertEquals(result.get(0).getBinId(), "TEST-BIN-001");
     }
 
     @Test
-    void countByStatus_ShouldReturnCorrectCount_WhenBinsExist() {
+    public void countByStatus_ShouldReturnCorrectCount_WhenBinsExist() {
         // Act
         long count = wasteBinRepository.countByStatus(BinStatus.ACTIVE);
 
         // Assert
-        assertEquals(1, count);
+        Assert.assertEquals(count, 1L);
     }
 }
