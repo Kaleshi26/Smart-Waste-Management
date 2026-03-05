@@ -11,24 +11,24 @@ import com.CSSEProject.SmartWasteManagement.waste.entity.CollectionEvent;
 import com.CSSEProject.SmartWasteManagement.waste.entity.RecyclingCollection;
 import com.CSSEProject.SmartWasteManagement.waste.repository.CollectionEventRepository;
 import com.CSSEProject.SmartWasteManagement.waste.repository.RecyclingCollectionRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.MockitoAnnotations;
+import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
-class InvoiceServiceTest {
+public class InvoiceServiceTest {
 
     @Mock
     private InvoiceRepository invoiceRepository;
@@ -52,9 +52,12 @@ class InvoiceServiceTest {
     private Invoice testInvoice;
     private CollectionEvent testCollection;
     private RecyclingCollection testRecycling;
+    private AutoCloseable mocks;
 
-    @BeforeEach
-    void setUp() {
+    @BeforeMethod
+    public void setUp() {
+        mocks = MockitoAnnotations.openMocks(this);
+
         testUser = new User();
         testUser.setId(1L);
         testUser.setName("John Doe");
@@ -80,8 +83,15 @@ class InvoiceServiceTest {
         testRecycling.setWeight(10.0);
     }
 
+    @AfterMethod
+    public void tearDown() throws Exception {
+        if (mocks != null) {
+            mocks.close();
+        }
+    }
+
     @Test
-    void generateMonthlyInvoice_WithPendingCharges_ShouldGenerateInvoice() {
+    public void generateMonthlyInvoice_WithPendingCharges_ShouldGenerateInvoice() {
         // Arrange
         when(userService.getUserById(1L)).thenReturn(testUser);
         when(collectionEventRepository.findUninvoicedByResident(1L)).thenReturn(Arrays.asList());
@@ -93,15 +103,15 @@ class InvoiceServiceTest {
         Invoice result = invoiceService.generateMonthlyInvoice(1L);
 
         // Assert
-        assertNotNull(result);
-        assertEquals("INV-001", result.getInvoiceNumber());
-        assertEquals(InvoiceStatus.PENDING, result.getStatus());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.getInvoiceNumber(), "INV-001");
+        Assert.assertEquals(result.getStatus(), InvoiceStatus.PENDING);
         verify(userService).updateUser(testUser);
         verify(invoiceRepository).save(any(Invoice.class));
     }
 
     @Test
-    void generateMonthlyInvoice_WithCollections_ShouldGenerateInvoice() {
+    public void generateMonthlyInvoice_WithCollections_ShouldGenerateInvoice() {
         // Arrange
         testUser.setPendingCharges(0.0);
         when(userService.getUserById(1L)).thenReturn(testUser);
@@ -115,13 +125,13 @@ class InvoiceServiceTest {
         Invoice result = invoiceService.generateMonthlyInvoice(1L);
 
         // Assert
-        assertNotNull(result);
+        Assert.assertNotNull(result);
         verify(collectionEventRepository, times(1)).save(testCollection);
         verify(recyclingCollectionRepository, times(1)).save(testRecycling);
     }
 
     @Test
-    void generateMonthlyInvoice_NoCollectionsOrCharges_ShouldThrowException() {
+    public void generateMonthlyInvoice_NoCollectionsOrCharges_ShouldThrowException() {
         // Arrange
         testUser.setPendingCharges(0.0);
         when(userService.getUserById(1L)).thenReturn(testUser);
@@ -129,15 +139,16 @@ class InvoiceServiceTest {
         when(recyclingCollectionRepository.findUninvoicedByResident(1L)).thenReturn(Arrays.asList());
 
         // Act & Assert
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+        // CHANGED HERE: expectThrows instead of assertThrows
+        RuntimeException exception = Assert.expectThrows(RuntimeException.class, () -> {
             invoiceService.generateMonthlyInvoice(1L);
         });
 
-        assertTrue(exception.getMessage().contains("No collections, recycling, or pending charges"));
+        Assert.assertTrue(exception.getMessage().contains("No collections, recycling, or pending charges"));
     }
 
     @Test
-    void getInvoiceById_ExistingId_ShouldReturnInvoice() {
+    public void getInvoiceById_ExistingId_ShouldReturnInvoice() {
         // Arrange
         when(invoiceRepository.findById(1L)).thenReturn(Optional.of(testInvoice));
 
@@ -145,26 +156,27 @@ class InvoiceServiceTest {
         Invoice result = invoiceService.getInvoiceById(1L);
 
         // Assert
-        assertNotNull(result);
-        assertEquals(1L, result.getId());
-        assertEquals("INV-001", result.getInvoiceNumber());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.getId(), 1L);
+        Assert.assertEquals(result.getInvoiceNumber(), "INV-001");
     }
 
     @Test
-    void getInvoiceById_NonExistingId_ShouldThrowException() {
+    public void getInvoiceById_NonExistingId_ShouldThrowException() {
         // Arrange
         when(invoiceRepository.findById(999L)).thenReturn(Optional.empty());
 
         // Act & Assert
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+        // CHANGED HERE: expectThrows instead of assertThrows
+        RuntimeException exception = Assert.expectThrows(RuntimeException.class, () -> {
             invoiceService.getInvoiceById(999L);
         });
 
-        assertTrue(exception.getMessage().contains("Invoice not found"));
+        Assert.assertTrue(exception.getMessage().contains("Invoice not found"));
     }
 
     @Test
-    void getInvoiceByNumber_ExistingNumber_ShouldReturnInvoice() {
+    public void getInvoiceByNumber_ExistingNumber_ShouldReturnInvoice() {
         // Arrange
         when(invoiceRepository.findByInvoiceNumber("INV-001")).thenReturn(Optional.of(testInvoice));
 
@@ -172,12 +184,12 @@ class InvoiceServiceTest {
         Invoice result = invoiceService.getInvoiceByNumber("INV-001");
 
         // Assert
-        assertNotNull(result);
-        assertEquals("INV-001", result.getInvoiceNumber());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.getInvoiceNumber(), "INV-001");
     }
 
     @Test
-    void markInvoiceAsPaid_ValidInvoice_ShouldUpdateStatus() {
+    public void markInvoiceAsPaid_ValidInvoice_ShouldUpdateStatus() {
         // Arrange
         when(invoiceRepository.findByInvoiceNumber("INV-001")).thenReturn(Optional.of(testInvoice));
         when(invoiceRepository.save(any(Invoice.class))).thenReturn(testInvoice);
@@ -186,14 +198,14 @@ class InvoiceServiceTest {
         invoiceService.markInvoiceAsPaid("INV-001", "PAY-123");
 
         // Assert
-        assertEquals(InvoiceStatus.PAID, testInvoice.getStatus());
-        assertEquals("ONLINE", testInvoice.getPaymentMethod());
-        assertEquals("PAY-123", testInvoice.getPaymentReference());
+        Assert.assertEquals(testInvoice.getStatus(), InvoiceStatus.PAID);
+        Assert.assertEquals(testInvoice.getPaymentMethod(), "ONLINE");
+        Assert.assertEquals(testInvoice.getPaymentReference(), "PAY-123");
         verify(invoiceRepository).save(testInvoice);
     }
 
     @Test
-    void processInvoicePayment_ValidInvoice_ShouldProcessPayment() {
+    public void processInvoicePayment_ValidInvoice_ShouldProcessPayment() {
         // Arrange
         testInvoice.setFinalAmount(800.0);
         when(invoiceRepository.findById(1L)).thenReturn(Optional.of(testInvoice));
@@ -204,28 +216,29 @@ class InvoiceServiceTest {
         Invoice result = invoiceService.processInvoicePayment(1L, "CARD", "TXN-123");
 
         // Assert
-        assertNotNull(result);
-        assertEquals(InvoiceStatus.PAID, result.getStatus());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.getStatus(), InvoiceStatus.PAID);
         verify(paymentRepository).save(any(Payment.class));
         verify(invoiceRepository).save(testInvoice);
     }
 
     @Test
-    void processInvoicePayment_AlreadyPaidInvoice_ShouldThrowException() {
+    public void processInvoicePayment_AlreadyPaidInvoice_ShouldThrowException() {
         // Arrange
         testInvoice.setStatus(InvoiceStatus.PAID);
         when(invoiceRepository.findById(1L)).thenReturn(Optional.of(testInvoice));
 
         // Act & Assert
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+        // CHANGED HERE: expectThrows instead of assertThrows
+        RuntimeException exception = Assert.expectThrows(RuntimeException.class, () -> {
             invoiceService.processInvoicePayment(1L, "CARD", "TXN-123");
         });
 
-        assertTrue(exception.getMessage().contains("already paid"));
+        Assert.assertTrue(exception.getMessage().contains("already paid"));
     }
 
     @Test
-    void getInvoicesByResident_ValidResident_ShouldReturnInvoices() {
+    public void getInvoicesByResident_ValidResident_ShouldReturnInvoices() {
         // Arrange
         when(invoiceRepository.findByResidentId(1L)).thenReturn(Arrays.asList(testInvoice));
 
@@ -233,13 +246,13 @@ class InvoiceServiceTest {
         List<Invoice> result = invoiceService.getInvoicesByResident(1L);
 
         // Assert
-        assertNotNull(result);
-        assertEquals(1, result.size());
-        assertEquals("INV-001", result.get(0).getInvoiceNumber());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.size(), 1);
+        Assert.assertEquals(result.get(0).getInvoiceNumber(), "INV-001");
     }
 
     @Test
-    void getPendingInvoices_ShouldReturnPendingInvoices() {
+    public void getPendingInvoices_ShouldReturnPendingInvoices() {
         // Arrange
         when(invoiceRepository.findByStatus(InvoiceStatus.PENDING)).thenReturn(Arrays.asList(testInvoice));
 
@@ -247,13 +260,13 @@ class InvoiceServiceTest {
         List<Invoice> result = invoiceService.getPendingInvoices();
 
         // Assert
-        assertNotNull(result);
-        assertEquals(1, result.size());
-        assertEquals(InvoiceStatus.PENDING, result.get(0).getStatus());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.size(), 1);
+        Assert.assertEquals(result.get(0).getStatus(), InvoiceStatus.PENDING);
     }
 
     @Test
-    void getOverdueInvoices_ShouldReturnOverdueInvoices() {
+    public void getOverdueInvoices_ShouldReturnOverdueInvoices() {
         // Arrange
         when(invoiceRepository.findByDueDateBeforeAndStatus(any(LocalDate.class), eq(InvoiceStatus.PENDING)))
                 .thenReturn(Arrays.asList(testInvoice));
@@ -262,12 +275,12 @@ class InvoiceServiceTest {
         List<Invoice> result = invoiceService.getOverdueInvoices();
 
         // Assert
-        assertNotNull(result);
-        assertEquals(1, result.size());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.size(), 1);
     }
 
     @Test
-    void updateInvoiceStatus_ValidStatus_ShouldUpdateInvoice() {
+    public void updateInvoiceStatus_ValidStatus_ShouldUpdateInvoice() {
         // Arrange
         when(invoiceRepository.findById(1L)).thenReturn(Optional.of(testInvoice));
         when(invoiceRepository.save(any(Invoice.class))).thenReturn(testInvoice);
@@ -276,13 +289,13 @@ class InvoiceServiceTest {
         Invoice result = invoiceService.updateInvoiceStatus(1L, "PAID");
 
         // Assert
-        assertNotNull(result);
-        assertEquals(InvoiceStatus.PAID, result.getStatus());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.getStatus(), InvoiceStatus.PAID);
         verify(invoiceRepository).save(testInvoice);
     }
 
     @Test
-    void getTotalRevenueBetween_ValidDates_ShouldReturnRevenue() {
+    public void getTotalRevenueBetween_ValidDates_ShouldReturnRevenue() {
         // Arrange
         LocalDate start = LocalDate.now().minusDays(30);
         LocalDate end = LocalDate.now();
@@ -292,7 +305,7 @@ class InvoiceServiceTest {
         Double result = invoiceService.getTotalRevenueBetween(start, end);
 
         // Assert
-        assertNotNull(result);
-        assertEquals(5000.0, result);
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result, 5000.0);
     }
 }
