@@ -12,25 +12,24 @@ import com.CSSEProject.SmartWasteManagement.waste.repository.CollectionEventRepo
 import com.CSSEProject.SmartWasteManagement.waste.repository.CollectionScheduleRepository;
 import com.CSSEProject.SmartWasteManagement.waste.repository.RecyclingCollectionRepository;
 import com.CSSEProject.SmartWasteManagement.waste.repository.WasteBinRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.MockitoAnnotations;
+import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
-class CollectionServiceTest {
+public class CollectionServiceTest {
 
     @Mock
     private CollectionEventRepository collectionRepository;
@@ -61,9 +60,12 @@ class CollectionServiceTest {
     private User mockCollector;
     private BillingModel mockBillingModel;
     private CollectionRequestDto validRequest;
+    private AutoCloseable mocks;
 
-    @BeforeEach
-    void setUp() {
+    @BeforeMethod
+    public void setUp() {
+        mocks = MockitoAnnotations.openMocks(this);
+
         // Setup mock resident
         mockResident = new User();
         mockResident.setId(1L);
@@ -98,11 +100,17 @@ class CollectionServiceTest {
         validRequest.setCollectorId(100L);
         validRequest.setWeight(10.5);
         validRequest.setTruckId("TRUCK-001");
-        // Remove notes since setNotes method doesn't exist
+    }
+
+    @AfterMethod
+    public void tearDown() throws Exception {
+        if (mocks != null) {
+            mocks.close();
+        }
     }
 
     @Test
-    void recordCollection_WithValidRequest_ShouldSaveCollection() {
+    public void recordCollection_WithValidRequest_ShouldSaveCollection() {
         // Arrange
         when(wasteBinRepository.findById("BIN-001")).thenReturn(Optional.of(mockBin));
         when(userRepository.findById(100L)).thenReturn(Optional.of(mockCollector));
@@ -124,10 +132,10 @@ class CollectionServiceTest {
         CollectionEvent result = collectionService.recordCollection(validRequest);
 
         // Assert
-        assertNotNull(result);
-        assertEquals("BIN-001", result.getWasteBin().getBinId());
-        assertEquals(10.5, result.getWeight());
-        assertEquals(52.5, result.getCalculatedCharge());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.getWasteBin().getBinId(), "BIN-001");
+        Assert.assertEquals(result.getWeight(), 10.5);
+        Assert.assertEquals(result.getCalculatedCharge(), 52.5);
 
         verify(collectionRepository, atLeastOnce()).save(any(CollectionEvent.class));
         verify(wasteBinRepository).save(mockBin);
@@ -135,13 +143,12 @@ class CollectionServiceTest {
     }
 
     @Test
-    void recordCollection_WithRecyclables_ShouldCalculateRefunds() {
+    public void recordCollection_WithRecyclables_ShouldCalculateRefunds() {
         // Arrange
         RecyclableItemDto recyclable = new RecyclableItemDto();
         recyclable.setType(RecyclableType.PLASTIC);
         recyclable.setWeightKg(2.0);
         recyclable.setQuality(QualityGrade.GOOD);
-        // Remove notes since it might not exist
 
         validRequest.setRecyclables(Arrays.asList(recyclable));
 
@@ -167,44 +174,44 @@ class CollectionServiceTest {
         CollectionEvent result = collectionService.recordCollection(validRequest);
 
         // Assert
-        assertNotNull(result);
-        assertTrue(result.getRecyclableItemsCount() > 0);
-        assertTrue(result.getRefundAmount() > 0);
-        assertEquals(2.0, result.getRecyclableWeight());
+        Assert.assertNotNull(result);
+        Assert.assertTrue(result.getRecyclableItemsCount() > 0);
+        Assert.assertTrue(result.getRefundAmount() > 0);
+        Assert.assertEquals(result.getRecyclableWeight(), 2.0);
     }
 
     @Test
-    void recordCollection_WithNonExistentBin_ShouldThrowException() {
+    public void recordCollection_WithNonExistentBin_ShouldThrowException() {
         // Arrange
         when(wasteBinRepository.findById("INVALID-BIN")).thenReturn(Optional.empty());
         validRequest.setBinId("INVALID-BIN");
 
         // Act & Assert
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+        RuntimeException exception = Assert.expectThrows(RuntimeException.class, () -> {
             collectionService.recordCollection(validRequest);
         });
 
-        assertEquals("Bin not found: INVALID-BIN", exception.getMessage());
+        Assert.assertEquals(exception.getMessage(), "Bin not found: INVALID-BIN");
         verify(feedbackService).provideErrorFeedback("Bin not found: INVALID-BIN");
     }
 
     @Test
-    void recordCollection_WithBinWithoutResident_ShouldThrowException() {
+    public void recordCollection_WithBinWithoutResident_ShouldThrowException() {
         // Arrange
         mockBin.setResident(null);
         when(wasteBinRepository.findById("BIN-001")).thenReturn(Optional.of(mockBin));
 
         // Act & Assert
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+        RuntimeException exception = Assert.expectThrows(RuntimeException.class, () -> {
             collectionService.recordCollection(validRequest);
         });
 
-        assertEquals("Bin not assigned to any resident: BIN-001", exception.getMessage());
+        Assert.assertEquals(exception.getMessage(), "Bin not assigned to any resident: BIN-001");
         verify(feedbackService).provideErrorFeedback("Bin not assigned to any resident");
     }
 
     @Test
-    void calculateCollectionCharge_WeightBasedBilling_ShouldCalculateCorrectly() {
+    public void calculateCollectionCharge_WeightBasedBilling_ShouldCalculateCorrectly() {
         // Arrange
         mockBillingModel.setBillingType(BillingType.WEIGHT_BASED);
         mockBillingModel.setRatePerKg(5.0);
@@ -228,11 +235,11 @@ class CollectionServiceTest {
         CollectionEvent result = collectionService.recordCollection(validRequest);
 
         // Assert
-        assertEquals(50.0, result.getCalculatedCharge());
+        Assert.assertEquals(result.getCalculatedCharge(), 50.0);
     }
 
     @Test
-    void getCollectionsByCollector_ShouldReturnCollections() {
+    public void getCollectionsByCollector_ShouldReturnCollections() {
         // Arrange
         CollectionEvent collection1 = new CollectionEvent();
         collection1.setId(1L);
@@ -251,12 +258,12 @@ class CollectionServiceTest {
         List<CollectionEvent> result = collectionService.getCollectionsByCollector(100L);
 
         // Assert
-        assertEquals(2, result.size());
+        Assert.assertEquals(result.size(), 2);
         verify(collectionRepository).findByCollectorId(100L);
     }
 
     @Test
-    void updateBinLevel_WithValidLevel_ShouldUpdateBin() {
+    public void updateBinLevel_WithValidLevel_ShouldUpdateBin() {
         // Arrange
         when(wasteBinRepository.findById("BIN-001")).thenReturn(Optional.of(mockBin));
         when(wasteBinRepository.save(any(WasteBin.class))).thenReturn(mockBin);
@@ -265,36 +272,36 @@ class CollectionServiceTest {
         WasteBin result = collectionService.updateBinLevel("BIN-001", 85.0);
 
         // Assert
-        assertNotNull(result);
-        assertEquals(85.0, result.getCurrentLevel());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.getCurrentLevel(), 85.0);
         verify(wasteBinRepository).save(mockBin);
     }
 
     @Test
-    void updateBinLevel_WithInvalidLevel_ShouldThrowException() {
+    public void updateBinLevel_WithInvalidLevel_ShouldThrowException() {
         // Act & Assert
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+        RuntimeException exception = Assert.expectThrows(RuntimeException.class, () -> {
             collectionService.updateBinLevel("BIN-001", 150.0);
         });
 
-        assertEquals("Bin level must be between 0 and 100", exception.getMessage());
+        Assert.assertEquals(exception.getMessage(), "Bin level must be between 0 and 100");
     }
 
     @Test
-    void isBinScheduledForCollectionToday_WithSchedule_ShouldReturnTrue() {
+    public void isBinScheduledForCollectionToday_WithSchedule_ShouldReturnTrue() {
         // Arrange
-        when(collectionScheduleRepository.findPendingScheduleForBin("BIN-001", java.time.LocalDate.now()))
+        when(collectionScheduleRepository.findPendingScheduleForBin(eq("BIN-001"), any(java.time.LocalDate.class)))
                 .thenReturn(Optional.of(new CollectionSchedule()));
 
         // Act
         boolean result = collectionService.isBinScheduledForCollectionToday("BIN-001");
 
         // Assert
-        assertTrue(result);
+        Assert.assertTrue(result);
     }
 
     @Test
-    void getResidentRecyclingCredits_ShouldReturnCredits() {
+    public void getResidentRecyclingCredits_ShouldReturnCredits() {
         // Arrange
         mockResident.setRecyclingCredits(150.0);
         when(userRepository.findById(1L)).thenReturn(Optional.of(mockResident));
@@ -303,11 +310,11 @@ class CollectionServiceTest {
         Double result = collectionService.getResidentRecyclingCredits(1L);
 
         // Assert
-        assertEquals(150.0, result);
+        Assert.assertEquals(result, 150.0);
     }
 
     @Test
-    void getTotalWasteCollectedBetween_ShouldReturnTotalWeight() {
+    public void getTotalWasteCollectedBetween_ShouldReturnTotalWeight() {
         // Arrange
         LocalDateTime start = LocalDateTime.now().minusDays(7);
         LocalDateTime end = LocalDateTime.now();
@@ -317,11 +324,11 @@ class CollectionServiceTest {
         Double result = collectionService.getTotalWasteCollectedBetween(start, end);
 
         // Assert
-        assertEquals(500.0, result);
+        Assert.assertEquals(result, 500.0);
     }
 
     @Test
-    void getCollectionCountBetween_ShouldReturnCount() {
+    public void getCollectionCountBetween_ShouldReturnCount() {
         // Arrange
         LocalDateTime start = LocalDateTime.now().minusDays(7);
         LocalDateTime end = LocalDateTime.now();
@@ -331,11 +338,11 @@ class CollectionServiceTest {
         Long result = collectionService.getCollectionCountBetween(start, end);
 
         // Assert
-        assertEquals(25L, result);
+        Assert.assertEquals(result, 25L);
     }
 
     @Test
-    void getUninvoicedCollections_ShouldReturnCollectionsWithoutInvoice() {
+    public void getUninvoicedCollections_ShouldReturnCollectionsWithoutInvoice() {
         // Arrange
         CollectionEvent uninvoicedCollection = new CollectionEvent();
         uninvoicedCollection.setId(1L);
@@ -345,12 +352,12 @@ class CollectionServiceTest {
         List<CollectionEvent> result = collectionService.getUninvoicedCollections();
 
         // Assert
-        assertFalse(result.isEmpty());
-        assertEquals(1, result.size());
+        Assert.assertFalse(result.isEmpty());
+        Assert.assertEquals(result.size(), 1);
     }
 
     @Test
-    void getCollectionsByBin_ShouldReturnCollections() {
+    public void getCollectionsByBin_ShouldReturnCollections() {
         // Arrange
         CollectionEvent collection = new CollectionEvent();
         collection.setId(1L);
@@ -360,7 +367,7 @@ class CollectionServiceTest {
         List<CollectionEvent> result = collectionService.getCollectionsByBin("BIN-001");
 
         // Assert
-        assertFalse(result.isEmpty());
-        assertEquals(1, result.size());
+        Assert.assertFalse(result.isEmpty());
+        Assert.assertEquals(result.size(), 1);
     }
 }
