@@ -8,15 +8,15 @@ import com.CSSEProject.SmartWasteManagement.waste.entity.WasteBin;
 import com.CSSEProject.SmartWasteManagement.waste.service.CollectionService;
 import com.CSSEProject.SmartWasteManagement.waste.service.OfflineSyncService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.MockitoAnnotations;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
 import java.util.Arrays;
 import java.util.List;
@@ -26,8 +26,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@ExtendWith(MockitoExtension.class)
-class CollectionControllerTest {
+public class CollectionControllerTest {
 
     private MockMvc mockMvc;
 
@@ -43,9 +42,11 @@ class CollectionControllerTest {
     private ObjectMapper objectMapper;
     private CollectionRequestDto validRequest;
     private CollectionEvent mockCollection;
+    private AutoCloseable mocks;
 
-    @BeforeEach
-    void setUp() {
+    @BeforeMethod
+    public void setUp() {
+        mocks = MockitoAnnotations.openMocks(this);
         mockMvc = MockMvcBuilders.standaloneSetup(collectionController).build();
         objectMapper = new ObjectMapper();
 
@@ -67,8 +68,15 @@ class CollectionControllerTest {
         mockCollection.setWasteBin(mockBin);
     }
 
+    @AfterMethod
+    public void tearDown() throws Exception {
+        if (mocks != null) {
+            mocks.close();
+        }
+    }
+
     @Test
-    void recordCollection_WithValidRequest_ShouldReturnSuccess() throws Exception {
+    public void recordCollection_WithValidRequest_ShouldReturnSuccess() throws Exception {
         // Arrange
         when(collectionService.recordCollection(any(CollectionRequestDto.class)))
                 .thenReturn(mockCollection);
@@ -87,7 +95,7 @@ class CollectionControllerTest {
     }
 
     @Test
-    void recordCollection_WithRecyclables_ShouldIncludeRecyclingSummary() throws Exception {
+    public void recordCollection_WithRecyclables_ShouldIncludeRecyclingSummary() throws Exception {
         // Arrange
         RecyclableItemDto recyclable = new RecyclableItemDto();
         recyclable.setType(com.CSSEProject.SmartWasteManagement.waste.entity.RecyclableType.PLASTIC);
@@ -112,7 +120,7 @@ class CollectionControllerTest {
     }
 
     @Test
-    void recordCollection_WithServiceError_ShouldReturnError() throws Exception {
+    public void recordCollection_WithServiceError_ShouldReturnError() throws Exception {
         // Arrange
         when(collectionService.recordCollection(any(CollectionRequestDto.class)))
                 .thenThrow(new RuntimeException("Bin not found"));
@@ -128,7 +136,7 @@ class CollectionControllerTest {
     }
 
     @Test
-    void getCollectionsByCollector_WithValidId_ShouldReturnCollections() throws Exception {
+    public void getCollectionsByCollector_WithValidId_ShouldReturnCollections() throws Exception {
         // Arrange
         CollectionResponseDto responseDto = new CollectionResponseDto(mockCollection);
         List<CollectionResponseDto> mockCollections = Arrays.asList(responseDto);
@@ -144,7 +152,7 @@ class CollectionControllerTest {
     }
 
     @Test
-    void getCollectionsByCollector_WithServiceError_ShouldReturnError() throws Exception {
+    public void getCollectionsByCollector_WithServiceError_ShouldReturnError() throws Exception {
         // Arrange
         when(collectionService.getCollectionsByCollectorAsDto(100L))
                 .thenThrow(new RuntimeException("Collector not found"));
@@ -156,7 +164,7 @@ class CollectionControllerTest {
     }
 
     @Test
-    void getCollectorStats_ShouldReturnStatistics() throws Exception {
+    public void getCollectorStats_ShouldReturnStatistics() throws Exception {
         // Arrange
         List<CollectionEvent> mockCollections = Arrays.asList(mockCollection);
         when(collectionService.getCollectionsByCollector(100L))
@@ -173,7 +181,7 @@ class CollectionControllerTest {
     }
 
     @Test
-    void getTotalWasteCollected_WithValidDates_ShouldReturnTotal() throws Exception {
+    public void getTotalWasteCollected_WithValidDates_ShouldReturnTotal() throws Exception {
         // Arrange
         when(collectionService.getTotalWasteCollectedBetween(any(), any()))
                 .thenReturn(500.0);
@@ -190,7 +198,7 @@ class CollectionControllerTest {
     }
 
     @Test
-    void debugCollectionsByCollector_ShouldReturnDebugInfo() throws Exception {
+    public void debugCollectionsByCollector_ShouldReturnDebugInfo() throws Exception {
         // Arrange
         when(collectionService.getCollectionsByCollector(100L))
                 .thenReturn(Arrays.asList(mockCollection));
@@ -204,7 +212,7 @@ class CollectionControllerTest {
     }
 
     @Test
-    void getCollectionSummary_ShouldReturnSummary() throws Exception {
+    public void getCollectionSummary_ShouldReturnSummary() throws Exception {
         // Arrange
         when(collectionService.getCollectionSummary("BIN-001"))
                 .thenReturn(new Object() {
@@ -224,7 +232,7 @@ class CollectionControllerTest {
     }
 
     @Test
-    void getRecyclingCredits_ShouldReturnCredits() throws Exception {
+    public void getRecyclingCredits_ShouldReturnCredits() throws Exception {
         // Arrange
         when(collectionService.getResidentRecyclingCredits(1L))
                 .thenReturn(150.0);
@@ -236,7 +244,7 @@ class CollectionControllerTest {
     }
 
     @Test
-    void getCollectionsByBin_ShouldReturnCollections() throws Exception {
+    public void getCollectionsByBin_ShouldReturnCollections() throws Exception {
         // Arrange
         when(collectionService.getCollectionsByBin("BIN-001"))
                 .thenReturn(Arrays.asList(mockCollection));
@@ -248,7 +256,7 @@ class CollectionControllerTest {
     }
 
     @Test
-    void getUninvoicedCollections_ShouldReturnUninvoiced() throws Exception {
+    public void getUninvoicedCollections_ShouldReturnUninvoiced() throws Exception {
         // Arrange
         when(collectionService.getUninvoicedCollections())
                 .thenReturn(Arrays.asList(mockCollection));
