@@ -1,4 +1,3 @@
-// Testing UserService business logic with mocked dependencies
 package com.CSSEProject.SmartWasteManagement.user.service;
 
 import com.CSSEProject.SmartWasteManagement.dto.RegisterRequestDto;
@@ -6,27 +5,22 @@ import com.CSSEProject.SmartWasteManagement.user.entity.User;
 import com.CSSEProject.SmartWasteManagement.user.entity.UserRole;
 import com.CSSEProject.SmartWasteManagement.user.repository.UserRepository;
 import com.CSSEProject.SmartWasteManagement.waste.repository.WasteBinRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.MockitoAnnotations;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
-/**
- * Unit tests for UserService business logic.
- * Tests user registration and authentication with mocked repository dependencies.
- */
-@ExtendWith(MockitoExtension.class)
-class UserServiceTest {
+public class UserServiceTest {
 
     @Mock
     private UserRepository userRepository;
@@ -42,9 +36,12 @@ class UserServiceTest {
 
     private RegisterRequestDto registerRequest;
     private User mockUser;
+    private AutoCloseable mocks;
 
-    @BeforeEach
-    void setUp() {
+    @BeforeMethod
+    public void setUp() {
+        mocks = MockitoAnnotations.openMocks(this);
+
         // Arrange - Setup test data
         registerRequest = new RegisterRequestDto();
         registerRequest.setName("John Doe");
@@ -61,8 +58,15 @@ class UserServiceTest {
         mockUser.setRole(UserRole.ROLE_RESIDENT);
     }
 
+    @AfterMethod
+    public void tearDown() throws Exception {
+        if (mocks != null) {
+            mocks.close();
+        }
+    }
+
     @Test
-    void registerUser_ShouldReturnUser_WhenValidRequest() {
+    public void registerUser_ShouldReturnUser_WhenValidRequest() {
         // Arrange
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.empty());
         when(passwordEncoder.encode(anyString())).thenReturn("encodedPassword");
@@ -72,26 +76,26 @@ class UserServiceTest {
         User result = userService.registerUser(registerRequest);
 
         // Assert
-        assertNotNull(result);
-        assertEquals("John Doe", result.getName());
-        assertEquals("john@example.com", result.getEmail());
-        assertEquals(UserRole.ROLE_RESIDENT, result.getRole());
+        Assert.assertNotNull(result);
+        Assert.assertEquals(result.getName(), "John Doe");
+        Assert.assertEquals(result.getEmail(), "john@example.com");
+        Assert.assertEquals(result.getRole(), UserRole.ROLE_RESIDENT);
         verify(userRepository).findByEmail("john@example.com");
         verify(passwordEncoder).encode("password123");
         verify(userRepository).save(any(User.class));
     }
 
     @Test
-    void registerUser_ShouldThrowException_WhenEmailExists() {
+    public void registerUser_ShouldThrowException_WhenEmailExists() {
         // Arrange
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(mockUser));
 
         // Act & Assert
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+        RuntimeException exception = Assert.expectThrows(RuntimeException.class, () -> {
             userService.registerUser(registerRequest);
         });
 
-        assertEquals("Error: Email is already in use!", exception.getMessage());
+        Assert.assertEquals(exception.getMessage(), "Error: Email is already in use!");
         verify(userRepository).findByEmail("john@example.com");
         verify(userRepository, never()).save(any(User.class));
     }
