@@ -6,15 +6,15 @@ import com.CSSEProject.SmartWasteManagement.payment.service.InvoiceService;
 import com.CSSEProject.SmartWasteManagement.payment.service.PayHereService;
 import com.CSSEProject.SmartWasteManagement.user.entity.User;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.MockitoAnnotations;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -25,8 +25,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@ExtendWith(MockitoExtension.class)
-class PayHereControllerTest {
+public class PayHereControllerTest {
 
     private MockMvc mockMvc;
 
@@ -42,9 +41,11 @@ class PayHereControllerTest {
     private ObjectMapper objectMapper;
     private Invoice mockInvoice;
     private User mockResident;
+    private AutoCloseable mocks;
 
-    @BeforeEach
-    void setUp() {
+    @BeforeMethod
+    public void setUp() {
+        mocks = MockitoAnnotations.openMocks(this);
         mockMvc = MockMvcBuilders.standaloneSetup(payHereController).build();
         objectMapper = new ObjectMapper();
 
@@ -65,11 +66,18 @@ class PayHereControllerTest {
         mockInvoice.setResident(mockResident);
     }
 
+    @AfterMethod
+    public void tearDown() throws Exception {
+        if (mocks != null) {
+            mocks.close();
+        }
+    }
+
     @Test
-    void initiatePayment_WithValidInvoice_ShouldReturnPaymentData() throws Exception {
+    public void initiatePayment_WithValidInvoice_ShouldReturnPaymentData() throws Exception {
         // Arrange
         when(invoiceService.getInvoiceById(1L)).thenReturn(mockInvoice);
-        
+
         Map<String, String> paymentData = new HashMap<>();
         paymentData.put("merchant_id", "1211144");
         paymentData.put("return_url", "http://localhost:5173/payment/success");
@@ -80,15 +88,15 @@ class PayHereControllerTest {
         paymentData.put("currency", "LKR");
         paymentData.put("amount", "15000.00");
         paymentData.put("hash", "test_hash_value");
-        
+
         when(payHereService.preparePaymentData(
-            eq("INV-001"),
-            eq("Waste Management Service - INV-001"),
-            eq(15000.0), // 50.0 USD * 300 LKR/USD
-            eq("LKR"),
-            any(Map.class)
+                eq("INV-001"),
+                eq("Waste Management Service - INV-001"),
+                eq(15000.0),
+                eq("LKR"),
+                any(Map.class)
         )).thenReturn(paymentData);
-        
+
         when(payHereService.getCheckoutUrl()).thenReturn("https://sandbox.payhere.lk/pay/checkout");
 
         // Act & Assert
@@ -104,7 +112,7 @@ class PayHereControllerTest {
     }
 
     @Test
-    void initiatePayment_WithPaidInvoice_ShouldReturnError() throws Exception {
+    public void initiatePayment_WithPaidInvoice_ShouldReturnError() throws Exception {
         // Arrange
         mockInvoice.setStatus(InvoiceStatus.PAID);
         when(invoiceService.getInvoiceById(1L)).thenReturn(mockInvoice);
@@ -119,7 +127,7 @@ class PayHereControllerTest {
     }
 
     @Test
-    void initiatePayment_WithNonExistentInvoice_ShouldReturnError() throws Exception {
+    public void initiatePayment_WithNonExistentInvoice_ShouldReturnError() throws Exception {
         // Arrange
         when(invoiceService.getInvoiceById(999L))
                 .thenThrow(new RuntimeException("Invoice not found"));
@@ -131,7 +139,7 @@ class PayHereControllerTest {
     }
 
     @Test
-    void handleNotification_WithValidPayment_ShouldProcessSuccessfully() throws Exception {
+    public void handleNotification_WithValidPayment_ShouldProcessSuccessfully() throws Exception {
         // Arrange
         Map<String, String> paymentData = new HashMap<>();
         paymentData.put("order_id", "INV-001");
@@ -148,14 +156,14 @@ class PayHereControllerTest {
 
         // Act & Assert
         mockMvc.perform(post("/api/payhere/notify")
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .param("order_id", "INV-001")
-                .param("status_code", "2")
-                .param("payment_id", "PAY123456")
-                .param("payhere_amount", "15000.00")
-                .param("payhere_currency", "LKR")
-                .param("method", "VISA")
-                .param("md5sig", "valid_signature"))
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("order_id", "INV-001")
+                        .param("status_code", "2")
+                        .param("payment_id", "PAY123456")
+                        .param("payhere_amount", "15000.00")
+                        .param("payhere_currency", "LKR")
+                        .param("method", "VISA")
+                        .param("md5sig", "valid_signature"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("Callback processed"));
 
@@ -164,7 +172,7 @@ class PayHereControllerTest {
     }
 
     @Test
-    void handleNotification_WithInvalidSignature_ShouldReturnError() throws Exception {
+    public void handleNotification_WithInvalidSignature_ShouldReturnError() throws Exception {
         // Arrange
         Map<String, String> paymentData = new HashMap<>();
         paymentData.put("order_id", "INV-001");
@@ -175,10 +183,10 @@ class PayHereControllerTest {
 
         // Act & Assert
         mockMvc.perform(post("/api/payhere/notify")
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .param("order_id", "INV-001")
-                .param("status_code", "2")
-                .param("md5sig", "invalid_signature"))
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("order_id", "INV-001")
+                        .param("status_code", "2")
+                        .param("md5sig", "invalid_signature"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string("Invalid signature"));
 
@@ -187,7 +195,7 @@ class PayHereControllerTest {
     }
 
     @Test
-    void handleNotification_WithFailedPayment_ShouldLogStatus() throws Exception {
+    public void handleNotification_WithFailedPayment_ShouldLogStatus() throws Exception {
         // Arrange
         Map<String, String> paymentData = new HashMap<>();
         paymentData.put("order_id", "INV-001");
@@ -199,10 +207,10 @@ class PayHereControllerTest {
 
         // Act & Assert
         mockMvc.perform(post("/api/payhere/notify")
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .param("order_id", "INV-001")
-                .param("status_code", "-1")
-                .param("md5sig", "valid_signature"))
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("order_id", "INV-001")
+                        .param("status_code", "-1")
+                        .param("md5sig", "valid_signature"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("Callback processed"));
 
@@ -211,7 +219,7 @@ class PayHereControllerTest {
     }
 
     @Test
-    void testIntegration_ShouldReturnTestData() throws Exception {
+    public void testIntegration_ShouldReturnTestData() throws Exception {
         // Arrange
         when(payHereService.generatePaymentHash("OrderNo12345", 1000.00, "LKR"))
                 .thenReturn("test_hash_value");
@@ -231,7 +239,7 @@ class PayHereControllerTest {
     }
 
     @Test
-    void verifySetup_ShouldReturnConfigurationDetails() throws Exception {
+    public void verifySetup_ShouldReturnConfigurationDetails() throws Exception {
         // Arrange
         when(payHereService.generatePaymentHash("OrderNo12345", 1000.00, "LKR"))
                 .thenReturn("actual_test_hash");
@@ -251,7 +259,7 @@ class PayHereControllerTest {
     }
 
     @Test
-    void getPaymentStatus_WithValidInvoice_ShouldReturnStatus() throws Exception {
+    public void getPaymentStatus_WithValidInvoice_ShouldReturnStatus() throws Exception {
         // Arrange
         mockInvoice.setStatus(InvoiceStatus.PAID);
         mockInvoice.setPaymentDate(LocalDate.now());
@@ -271,7 +279,7 @@ class PayHereControllerTest {
     }
 
     @Test
-    void getPaymentStatus_WithNonExistentInvoice_ShouldReturnError() throws Exception {
+    public void getPaymentStatus_WithNonExistentInvoice_ShouldReturnError() throws Exception {
         // Arrange
         when(invoiceService.getInvoiceByNumber("INVALID-INV"))
                 .thenThrow(new RuntimeException("Invoice not found"));
@@ -283,18 +291,18 @@ class PayHereControllerTest {
     }
 
     @Test
-    void initiatePayment_WithResidentWithoutEmail_ShouldUseDefaultEmail() throws Exception {
+    public void initiatePayment_WithResidentWithoutEmail_ShouldUseDefaultEmail() throws Exception {
         // Arrange
         mockResident.setEmail(null);
         mockInvoice.setResident(mockResident);
-        
+
         when(invoiceService.getInvoiceById(1L)).thenReturn(mockInvoice);
-        
+
         Map<String, String> paymentData = new HashMap<>();
         paymentData.put("merchant_id", "1211144");
         paymentData.put("order_id", "INV-001");
         paymentData.put("amount", "15000.00");
-        
+
         when(payHereService.preparePaymentData(anyString(), anyString(), anyDouble(), anyString(), any(Map.class)))
                 .thenReturn(paymentData);
         when(payHereService.getCheckoutUrl()).thenReturn("https://sandbox.payhere.lk/pay/checkout");
@@ -303,39 +311,37 @@ class PayHereControllerTest {
         mockMvc.perform(post("/api/payhere/initiate/1"))
                 .andExpect(status().isOk());
 
-        // Verify that payment data preparation was called with customer info containing default email
         verify(payHereService).preparePaymentData(
-            eq("INV-001"),
-            eq("Waste Management Service - INV-001"),
-            eq(15000.0),
-            eq("LKR"),
-            argThat(customerInfo -> 
-                customerInfo.containsKey("email") && 
-                "customer@example.com".equals(customerInfo.get("email"))
-            )
+                eq("INV-001"),
+                eq("Waste Management Service - INV-001"),
+                eq(15000.0),
+                eq("LKR"),
+                argThat(customerInfo ->
+                        customerInfo.containsKey("email") &&
+                                "customer@example.com".equals(customerInfo.get("email"))
+                )
         );
     }
 
     @Test
-    void handleNotification_WithMissingAmount_ShouldStillProcess() throws Exception {
+    public void handleNotification_WithMissingAmount_ShouldStillProcess() throws Exception {
         // Arrange
         Map<String, String> paymentData = new HashMap<>();
         paymentData.put("order_id", "INV-001");
         paymentData.put("status_code", "2");
         paymentData.put("payment_id", "PAY123456");
         paymentData.put("md5sig", "valid_signature");
-        // Note: payhere_amount is missing
 
         when(payHereService.verifyWebhookSignature(paymentData)).thenReturn(true);
         doNothing().when(invoiceService).markInvoiceAsPaid("INV-001", "PAY123456");
 
         // Act & Assert
         mockMvc.perform(post("/api/payhere/notify")
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .param("order_id", "INV-001")
-                .param("status_code", "2")
-                .param("payment_id", "PAY123456")
-                .param("md5sig", "valid_signature"))
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("order_id", "INV-001")
+                        .param("status_code", "2")
+                        .param("payment_id", "PAY123456")
+                        .param("md5sig", "valid_signature"))
                 .andExpect(status().isOk());
 
         verify(invoiceService).markInvoiceAsPaid("INV-001", "PAY123456");
