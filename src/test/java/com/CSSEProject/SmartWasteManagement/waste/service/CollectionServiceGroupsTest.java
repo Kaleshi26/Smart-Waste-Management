@@ -120,6 +120,15 @@ public class CollectionServiceGroupsTest {
         Assert.assertTrue(true);
     }
 
+    /**
+     * Dependency example - This test intentionally fails
+     * to demonstrate dependsOnMethods with alwaysRun = true.
+     */
+    @Test(groups = {"cleanup"})
+    public void testThatFails() {
+        System.out.println("   ❌ FAILURE: This test is expected to fail");
+        Assert.fail("Intentional failure for dependency demonstration");
+    }
 
     @Test(dependsOnMethods = {"testThatFails"}, alwaysRun = true, groups = {"cleanup"})
     public void testCleanup() {
