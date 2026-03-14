@@ -16,6 +16,10 @@ import static org.mockito.Mockito.*;
 
 /**
  * TESTNG FEATURE: GROUPS & TEST CONFIGURATION
+ •organizing tests
+ • running selected groups of tests
+ • controlling execution behavior
+ • improving test management in large projects
  *
  * Demonstrates:
  * @Test(groups = "name") - Assign tests to groups
